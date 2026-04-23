@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v3.7</title>
+    <title>翔毅車業預定系統 v3.8</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
@@ -34,13 +34,32 @@
         .admin-section { display: none; border-top: 2px dashed #444; margin-top: 30px; padding-top: 20px; }
         .cat-card { background: #1a1a1a; border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
         .item-row { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 8px 12px; border-radius: 5px; margin-top: 5px; font-size: 12px; }
-        .del-btn { width: auto; background: #ff4444; padding: 4px 8px; font-size: 11px; cursor: pointer; border: none; }
+        .item-info { flex: 1; }
+        .admin-btns { display: flex; gap: 5px; }
+        .del-btn { width: auto; background: #ff4444; padding: 4px 8px; font-size: 11px; cursor: pointer; border: none; margin: 0; }
+        .edit-btn { width: auto; background: #4a90e2; padding: 4px 8px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
         .mode-toggle { display: flex; gap: 4px; margin-bottom: 10px; }
         .mode-toggle button { flex: 1; font-size: 11px; padding: 6px; background: #444; border: none; }
         .mode-toggle button.active { background: var(--accent); color: black; }
+
+        /* 自定義彈窗樣式，取代 alert/confirm */
+        #custom-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2a2a2a; padding: 20px; border-radius: 10px; border: 2px solid var(--accent); z-index: 1000; box-shadow: 0 0 20px rgba(0,0,0,0.8); width: 80%; max-width: 300px; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 999; }
     </style>
 </head>
 <body>
+
+<!-- 自定義改價彈窗 -->
+<div class="modal-overlay" id="modal-overlay"></div>
+<div id="custom-modal">
+    <h4 style="margin-top:0">修改價格</h4>
+    <p id="modal-item-name" style="font-size:12px; color:#aaa;"></p>
+    <div id="modal-input-area"></div>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+        <button id="modal-confirm" style="background:var(--accent); color:black; margin:0">儲存</button>
+        <button onclick="closeModal()" style="background:#555; margin:0">取消</button>
+    </div>
+</div>
 
 <div class="card">
     <h2>🏎️ 翔毅車業預定系統</h2>
@@ -153,10 +172,56 @@
             let itemsHtml = '';
             for (let iId in c.items) {
                 const it = c.items[iId];
-                itemsHtml += `<div class="item-row"><span>${it.name}</span><button class="del-btn" onclick="db.ref('xiangyi_shop/${id}/items/${iId}').remove()">下架</button></div>`;
+                let priceLabel = it.type === 'single' ? `$${it.price}` : (it.type === 'range' ? `$${it.min}-${it.max}` : '自填10%');
+                itemsHtml += `
+                    <div class="item-row">
+                        <div class="item-info"><b>${it.name}</b> <span style="color:#888">(${priceLabel})</span></div>
+                        <div class="admin-btns">
+                            <button class="edit-btn" onclick="openEditModal('${id}', '${iId}')">改價</button>
+                            <button class="del-btn" onclick="db.ref('xiangyi_shop/${id}/items/${iId}').remove()">下架</button>
+                        </div>
+                    </div>`;
             }
             aL.innerHTML += `<div class="cat-card"><b>${c.name}</b> <button class="del-btn" style="background:#666" onclick="db.ref('xiangyi_shop/${id}').remove()">刪除</button>${itemsHtml}</div>`;
         }
+    }
+
+    function openEditModal(catId, itemId) {
+        const item = storeData[catId].items[itemId];
+        const modal = document.getElementById('custom-modal');
+        const overlay = document.getElementById('modal-overlay');
+        const inputArea = document.getElementById('modal-input-area');
+        const confirmBtn = document.getElementById('modal-confirm');
+        
+        document.getElementById('modal-item-name').innerText = item.name;
+        inputArea.innerHTML = '';
+        
+        if (item.type === 'single') {
+            inputArea.innerHTML = `<input type="number" id="edit-price" value="${item.price}" placeholder="輸入新售價">`;
+            confirmBtn.onclick = () => {
+                const newP = document.getElementById('edit-price').value;
+                if(newP) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: newP }); closeModal(); }
+            };
+        } else if (item.type === 'range') {
+            inputArea.innerHTML = `
+                <input type="number" id="edit-min" value="${item.min}" placeholder="最低">
+                <input type="number" id="edit-max" value="${item.max}" placeholder="最高">`;
+            confirmBtn.onclick = () => {
+                const min = document.getElementById('edit-min').value, max = document.getElementById('edit-max').value;
+                if(min && max) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ min, max }); closeModal(); }
+            };
+        } else {
+            inputArea.innerHTML = `<p style="font-size:12px; color:#ff4444">自填項目無需預設價格</p>`;
+            confirmBtn.onclick = closeModal;
+        }
+
+        modal.style.display = 'block';
+        overlay.style.display = 'block';
+    }
+
+    function closeModal() {
+        document.getElementById('custom-modal').style.display = 'none';
+        document.getElementById('modal-overlay').style.display = 'none';
     }
 
     function updateItems() {
@@ -199,19 +264,15 @@
         document.getElementById('pPrice').value = total;
     }
 
-    // 生成訂單編號函式
     async function generateOrderNo() {
         const now = new Date();
         const dateStr = (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
         const timeStr = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0');
-        
-        // 從資料庫獲取今日已有的訂單數來做流水號
         const dayRef = db.ref('order_counters/' + dateStr);
         const snapshot = await dayRef.transaction(currentCount => {
             return (currentCount || 0) + 1;
         });
         const seq = snapshot.snapshot.val().toString().padStart(2, '0');
-        
         return `${dateStr}${timeStr}${seq}`;
     }
 
@@ -226,9 +287,7 @@
         btn.innerText = "處理中...";
 
         try {
-            // 生成編號
             const orderNo = await generateOrderNo();
-            
             let details = [];
             sel.forEach(el => {
                 const t = el.getAttribute('data-type'), id = el.getAttribute('data-id');
@@ -246,7 +305,7 @@
                     username: "翔毅車業預定系統",
                     embeds: [{
                         title: `🆕 新預定單 #${orderNo}`,
-                        color: 16751104, // 橘色
+                        color: 16751104,
                         fields: [
                             { name: "👤 顧客名稱", value: `<@${userData.id}>`, inline: true },
                             { name: "🆔 Discord ID", value: `\`${userData.id}\``, inline: true },
