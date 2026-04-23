@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FiveM 雲端預購系統 (Discord 連動版)</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        :root { --main: #5865F2; --bg: #121212; --card: #1e1e1e; } /* 改為 Discord 藍 */
+        body { font-family: sans-serif; background: var(--bg); color: white; padding: 20px; }
+        .card { background: var(--card); padding: 25px; border-radius: 15px; max-width: 500px; margin: auto; border: 1px solid #333; }
+        .dc-login-btn { background: #5865F2; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .user-info { background: #2f3136; padding: 10px; border-radius: 8px; display: none; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .user-info img { border-radius: 50%; width: 32px; }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; box-sizing: border-box; background: #2a2a2a; color: white; }
+        .btn-send { background: #ff9900; color: black; font-weight: bold; border: none; }
+        .admin-section { display: none; margin-top: 20px; border-top: 1px dashed #555; padding-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🛒 雲端預購系統</h2>
+
+    <div id="player-view">
+        <button id="login-btn" class="dc-login-btn" onclick="loginDiscord()">
+            <span>連結 Discord 帳號</span>
+        </button>
+
+        <div id="user-display" class="user-info">
+            <img id="user-avatar" src="" alt="">
+            <span id="user-name"></span>
+        </div>
+
+        <label>選擇預購類別</label>
+        <select id="pCategorySelect" onchange="updateItemList()"><option>載入中...</option></select>
+        
+        <label>選擇品項</label>
+        <select id="pItemSelect"><option>請先選擇類別</option></select>
+        
+        <label>定金金額</label>
+        <input type="number" id="pPrice" placeholder="輸入支付金額">
+        
+        <button class="btn-send" onclick="sendOrder()">確認預購並送出</button>
+        <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin-top:30px;" onclick="showLogin()">管理登入</p>
+    </div>
+
+    <div id="login-view" style="display:none;">
+        <h3>管理者驗證</h3>
+        <input type="text" id="adminUser" placeholder="帳號">
+        <input type="password" id="adminPass" placeholder="密碼">
+        <button onclick="loginAdmin()">登入</button>
+    </div>
+    <div id="admin-view" class="admin-section">
+        </div>
+</div>
+
+<script>
+    // --- 1. 配置區 ---
+    const CLIENT_ID = '你的_Discord_Client_ID'; // 從 Discord Developer Portal 取得
+    const REDIRECT_URI = window.location.href.split('#')[0]; // 自動抓取目前的網址
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAO56gUfagEELFVpvu7cxKKfmO4Q165QlE",
+        authDomain: "fivem-shop-7907b.firebaseapp.com",
+        databaseURL: "https://fivem-shop-7907b-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "fivem-shop-7907b",
+        storageBucket: "fivem-shop-7907b.firebasestorage.app",
+        messagingSenderId: "640041446455",
+        appId: "1:640041446455:web:6914a2d1b3545a6bf5a3b2"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let userData = null;
+
+    // --- 2. Discord OAuth2 邏輯 ---
+    function loginDiscord() {
+        const url = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
+        window.location.href = url;
+    }
+
+    window.onload = () => {
+        const fragment = new URLSearchParams(window.location.hash.slice(1));
+        const accessToken = fragment.get('access_token');
+
+        if (accessToken) {
+            fetch('https://discord.com/api/users/@me', {
+                headers: { authorization: `Bearer ${accessToken}` }
+            })
+            .then(res => res.json())
+            .then(response => {
+                userData = response;
+                document.getElementById('login-btn').style.display = 'none';
+                document.getElementById('user-display').style.display = 'flex';
+                document.getElementById('user-name').innerText = `${userData.username} (${userData.id})`;
+                document.getElementById('user-avatar').src = `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png`;
+                window.location.hash = ""; // 清除網址上的 Token
+            });
+        }
+        
+        // 監聽 Firebase 數據
+        db.ref('store').on('value', (snap) => { allData = snap.val() || {}; refreshUI(); });
+    };
+
+    // --- 3. 發送訂單 (包含 Discord ID) ---
+    async function sendOrder() {
+        if (!userData) return alert("請先連結 Discord 帳號！");
+        
+        const catID = document.getElementById('pCategorySelect').value;
+        const item = document.getElementById('pItemSelect').value;
+        const price = document.getElementById('pPrice').value;
+        if (!catID || !item || !price) return alert("請填寫完整資訊");
+
+        const payload = {
+            username: "車行連動預購機",
+            embeds: [{
+                title: `🆕 收到來自 ${userData.username} 的預購單`,
+                color: 5814783,
+                fields: [
+                    { name: "👤 Discord 使用者", value: `<@${userData.id}>`, inline: true },
+                    { name: "🆔 Discord ID", value: userData.id, inline: true },
+                    { name: "📦 預購項目", value: item, inline: false },
+                    { name: "💰 支付金額", value: "$" + price, inline: true }
+                ],
+                thumbnail: { url: `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` },
+                timestamp: new Date()
+            }]
+        };
+
+        await fetch(allData[catID].webhook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        alert("預購成功！已記錄您的 Discord 身份。");
+    }
+
+    // ... (其餘 refreshUI, loginAdmin 等管理功能維持不變) ...
+</script>
+</body>
+</html>
