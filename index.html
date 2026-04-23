@@ -36,7 +36,7 @@
         </div>
 
         <label>選擇預購分類</label>
-        <select id="pCat" onchange="updateItems()"><option value="">載入中...</option></select>
+        <select id="pCat" onchange="updateItems()"><option value="">載入資料中...</option></select>
         
         <label>選擇商品</label>
         <select id="pItem"><option value="">請先選擇分類</option></select>
@@ -45,7 +45,7 @@
         <input type="number" id="pPrice" placeholder="請輸入金額">
         
         <button class="btn-send" onclick="sendOrder()">送出預購申請</button>
-        <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin-top:40px;" onclick="showLogin()">後台管理</p>
+        <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin-top:40px;" onclick="showLogin()">⚙️ 後台管理</p>
     </div>
 
     <div id="login-view" style="display:none;">
@@ -58,14 +58,14 @@
 
     <div id="admin-view" class="admin-section">
         <div class="cat-card">
-            <h4 style="margin:0 0 10px; color:var(--main)">Step 1. 新增分類</h4>
+            <h4 style="margin:0 0 10px; color:var(--main)">1. 新增分類</h4>
             <input type="text" id="nCatName" placeholder="分類名稱 (如: 改裝零件)">
             <input type="text" id="nCatWeb" placeholder="此分類專用 Webhook 網址">
             <button onclick="addCat()">建立分類</button>
         </div>
 
         <div class="cat-card">
-            <h4 style="margin:0 0 10px; color:var(--main)">Step 2. 新增商品</h4>
+            <h4 style="margin:0 0 10px; color:var(--main)">2. 新增商品</h4>
             <select id="aCatSelect"></select>
             <input type="text" id="nItemName" placeholder="商品名稱">
             <input type="number" id="nItemPrice" placeholder="顯示價格">
@@ -77,7 +77,6 @@
 </div>
 
 <script>
-    // --- 1. 初始化與金鑰 (已填入你的 Firebase 與 Discord 資訊) ---
     const CLIENT_ID = '1496839420521742367';
     const REDIRECT_URI = window.location.href.split('#')[0];
 
@@ -94,7 +93,6 @@
     const db = firebase.database();
     let storeData = {}, userData = null;
 
-    // --- 2. Discord 登入邏輯 ---
     function loginDiscord() {
         window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
     }
@@ -108,33 +106,31 @@
                 userData = res;
                 document.getElementById('login-btn').style.display = 'none';
                 document.getElementById('user-display').style.display = 'flex';
-                document.getElementById('user-name').innerText = `${res.username}`;
+                document.getElementById('user-name').innerText = res.username;
                 document.getElementById('user-avatar').src = `https://cdn.discordapp.com/avatars/${res.id}/${res.avatar}.png`;
                 window.location.hash = "";
             });
         }
-        db.ref('v2_store').on('value', s => { storeData = s.val() || {}; refreshUI(); });
+        db.ref('shop_v3').on('value', s => { storeData = s.val() || {}; refreshUI(); });
     };
 
-    // --- 3. UI 刷新 ---
     function refreshUI() {
         const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aL = document.getElementById('admin-list');
-        pC.innerHTML = '<option value="">請選擇...</option>';
-        aC.innerHTML = '<option value="">請選擇...</option>';
-        aL.innerHTML = '<h4 style="margin-top:20px">現有清單：</h4>';
+        pC.innerHTML = '<option value="">請選擇類別...</option>';
+        aC.innerHTML = '<option value="">選擇要加入的類別...</option>';
+        aL.innerHTML = '<h4 style="margin-top:20px">目前系統清單：</h4>';
 
         for (let id in storeData) {
             const c = storeData[id];
             pC.innerHTML += `<option value="${id}">${c.name}</option>`;
             aC.innerHTML += `<option value="${id}">${c.name}</option>`;
-            
             let items = '';
             if (c.items) {
                 for (let iId in c.items) {
                     items += `<div class="item-row"><span>${c.items[iId].name} ($${c.items[iId].price})</span><button class="del-btn" onclick="delI('${id}','${iId}')">刪除</button></div>`;
                 }
             }
-            aL.innerHTML += `<div class="cat-card"><b>${c.name}</b> <button class="del-btn" style="background:#666" onclick="delC('${id}')">刪類別</button>${items}</div>`;
+            aL.innerHTML += `<div class="cat-card"><b>${c.name}</b> <button class="del-btn" style="background:#666" onclick="delC('${id}')">刪除類別</button>${items}</div>`;
         }
     }
 
@@ -149,30 +145,28 @@
         }
     }
 
-    // --- 4. 管理功能 ---
     function showLogin() { document.getElementById('player-view').style.display='none'; document.getElementById('login-view').style.display='block'; }
     function authAdmin() {
         if (document.getElementById('aUser').value==='pomelo' && document.getElementById('aPass').value==='0326') {
             document.getElementById('login-view').style.display='none';
             document.getElementById('admin-view').style.display='block';
-        } else alert('錯誤');
+        } else alert('登入失敗');
     }
     function addCat() {
         const n = document.getElementById('nCatName').value, w = document.getElementById('nCatWeb').value;
-        if(n && w) db.ref('v2_store').push({ name: n, webhook: w });
+        if(n && w) db.ref('shop_v3').push({ name: n, webhook: w });
     }
     function addItem() {
         const id = document.getElementById('aCatSelect').value, n = document.getElementById('nItemName').value, p = document.getElementById('nItemPrice').value;
-        if(id && n && p) db.ref(`v2_store/${id}/items`).push({ name: n, price: p });
+        if(id && n && p) db.ref(`shop_v3/${id}/items`).push({ name: n, price: p });
     }
-    function delI(cid, iid) { db.ref(`v2_store/${cid}/items/${iid}`).remove(); }
-    function delC(cid) { if(confirm('刪除整類？')) db.ref(`v2_store/${cid}`).remove(); }
+    function delI(cid, iid) { db.ref(`shop_v3/${cid}/items/${iid}`).remove(); }
+    function delC(cid) { if(confirm('確定刪除整類？')) db.ref(`shop_v3/${cid}`).remove(); }
 
-    // --- 5. 送出訂單 ---
     async function sendOrder() {
         if (!userData) return alert("請先連結 Discord！");
         const cid = document.getElementById('pCat').value, item = document.getElementById('pItem').value, price = document.getElementById('pPrice').value;
-        if (!cid || !item || !price) return alert("資訊不完整");
+        if (!cid || !item || !price) return alert("填寫不完整");
 
         await fetch(storeData[cid].webhook, {
             method: 'POST',
@@ -180,19 +174,19 @@
             body: JSON.stringify({
                 username: "車行預購系統",
                 embeds: [{
-                    title: `🆕 收到來自 ${userData.username} 的預購`,
+                    title: `🆕 收到來自 ${userData.username} 的預購單`,
                     color: 5814783,
                     fields: [
-                        { name: "👤 玩家", value: `<@${userData.id}>`, inline: true },
-                        { name: "📦 項目", value: item, inline: true },
-                        { name: "💰 支付", value: "$" + price, inline: true }
+                        { name: "👤 玩家帳號", value: `<@${userData.id}>`, inline: true },
+                        { name: "📦 預購品項", value: item, inline: true },
+                        { name: "💰 支付金額", value: "$" + price, inline: true }
                     ],
                     thumbnail: { url: `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` },
                     timestamp: new Date()
                 }]
             })
         });
-        alert("送出成功！");
+        alert("申請已成功送出！");
     }
 </script>
 </body>
