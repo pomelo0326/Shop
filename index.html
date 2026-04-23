@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 </title>
+    <title>翔毅車業預定系統 v3.1</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
@@ -14,9 +14,17 @@
         .dc-btn { background: #5865F2; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 20px; }
         .user-box { background: #2f3136; padding: 10px; border-radius: 8px; display: none; align-items: center; gap: 10px; margin-bottom: 15px; border: 1px solid #444; }
         .user-box img { border-radius: 50%; width: 35px; }
-        label { display: block; margin-top: 10px; color: #aaa; font-size: 13px; }
+        label { display: block; margin-top: 15px; color: #aaa; font-size: 13px; font-weight: bold; }
         input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; box-sizing: border-box; background: #2a2a2a; color: white; }
         .btn-send { background: var(--accent); color: black; font-weight: bold; border: none; font-size: 16px; margin-top: 15px; cursor: pointer; }
+        
+        /* 多選清單樣式 */
+        .checkbox-group { background: #2a2a2a; border-radius: 8px; padding: 10px; max-height: 200px; overflow-y: auto; border: 1px solid #444; margin-top: 8px; }
+        .item-option { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #333; cursor: pointer; }
+        .item-option:last-child { border-bottom: none; }
+        .item-option input { width: auto; margin-right: 12px; cursor: pointer; }
+        .item-option:hover { background: #333; }
+
         .admin-section { display: none; border-top: 2px dashed #444; margin-top: 30px; padding-top: 20px; }
         .cat-card { background: #1a1a1a; border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
         .item-row { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 8px 12px; border-radius: 5px; margin-top: 5px; }
@@ -35,14 +43,16 @@
             <span id="user-name"></span>
         </div>
 
-        <label>選擇服務分類</label>
+        <label>1. 選擇業務類別</label>
         <select id="pCat" onchange="updateItems()"><option value="">讀取店內資料中...</option></select>
         
-        <label>選擇預定項目</label>
-        <select id="pItem"><option value="">請先選擇分類</option></select>
+        <label>2. 勾選預定項目 (可多選)</label>
+        <div id="item-list" class="checkbox-group">
+            <p style="color:#666; font-size:12px; text-align:center;">請先選擇上方類別</p>
+        </div>
         
-        <label>預付定金金額</label>
-        <input type="number" id="pPrice" placeholder="請輸入欲支付金額">
+        <label>3. 填寫預付定金</label>
+        <input type="number" id="pPrice" placeholder="請輸入欲支付定金金額">
         
         <button class="btn-send" onclick="sendOrder()">送出預定申請</button>
         <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin-top:40px;" onclick="showLogin()">⚙️ 翔毅員工後台</p>
@@ -59,11 +69,10 @@
     <div id="admin-view" class="admin-section">
         <div class="cat-card">
             <h4 style="margin:0 0 10px; color:var(--accent)">1. 新增業務類別</h4>
-            <input type="text" id="nCatName" placeholder="分類名稱 (如: 引擎改裝)">
-            <input type="text" id="nCatWeb" placeholder="對應 Discord 頻道 Webhook">
+            <input type="text" id="nCatName" placeholder="分類名稱">
+            <input type="text" id="nCatWeb" placeholder="對應 Discord Webhook">
             <button onclick="addCat()">建立分類</button>
         </div>
-
         <div class="cat-card">
             <h4 style="margin:0 0 10px; color:var(--accent)">2. 上架服務項目</h4>
             <select id="aCatSelect"></select>
@@ -71,16 +80,14 @@
             <input type="number" id="nItemPrice" placeholder="參考價格">
             <button onclick="addItem()">確認上架</button>
         </div>
-
         <div id="admin-list"></div>
     </div>
 </div>
 
 <script>
-    // --- 配置資訊 ---
+    // --- 配置保持不變 ---
     const CLIENT_ID = '1496839420521742367'; 
     const REDIRECT_URI = window.location.href.split('#')[0]; 
-
     const firebaseConfig = {
         apiKey: "AIzaSyAO56gUfagEELFVpvu7cxKKfmO4Q165QlE",
         authDomain: "fivem-shop-7907b.firebaseapp.com",
@@ -113,10 +120,7 @@
                 window.location.hash = ""; 
             });
         }
-        db.ref('xiangyi_shop').on('value', s => { 
-            storeData = s.val() || {}; 
-            refreshUI(); 
-        });
+        db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
     };
 
     function refreshUI() {
@@ -124,7 +128,6 @@
         pC.innerHTML = '<option value="">請選擇業務類別...</option>';
         aC.innerHTML = '<option value="">選擇類別以新增項目...</option>';
         aL.innerHTML = '<h4 style="margin-top:20px">現有業務清單：</h4>';
-
         for (let id in storeData) {
             const c = storeData[id];
             pC.innerHTML += `<option value="${id}">${c.name}</option>`;
@@ -139,39 +142,36 @@
         }
     }
 
+    // 更新為勾選清單
     function updateItems() {
         const id = document.getElementById('pCat').value;
-        const pI = document.getElementById('pItem');
-        pI.innerHTML = '';
+        const listDiv = document.getElementById('item-list');
+        listDiv.innerHTML = '';
         if (id && storeData[id].items) {
             for (let iId in storeData[id].items) {
-                pI.innerHTML += `<option value="${storeData[id].items[iId].name}">${storeData[id].items[iId].name} ($${storeData[id].items[iId].price})</option>`;
+                const item = storeData[id].items[iId];
+                listDiv.innerHTML += `
+                    <label class="item-option">
+                        <input type="checkbox" name="shopItem" value="${item.name}" data-price="${item.price}">
+                        <span>${item.name} <small style="color:#888">($${item.price})</small></span>
+                    </label>`;
             }
+        } else {
+            listDiv.innerHTML = '<p style="color:#666; font-size:12px; text-align:center;">此類別尚無服務項目</p>';
         }
     }
 
-    function showLogin() { document.getElementById('player-view').style.display='none'; document.getElementById('login-view').style.display='block'; }
-    function authAdmin() {
-        if (document.getElementById('aUser').value==='pomelo' && document.getElementById('aPass').value==='0326') {
-            document.getElementById('login-view').style.display='none';
-            document.getElementById('admin-view').style.display='block';
-        } else alert('員工身分驗證失敗');
-    }
-    function addCat() {
-        const n = document.getElementById('nCatName').value, w = document.getElementById('nCatWeb').value;
-        if(n && w) db.ref('xiangyi_shop').push({ name: n, webhook: w });
-    }
-    function addItem() {
-        const id = document.getElementById('aCatSelect').value, n = document.getElementById('nItemName').value, p = document.getElementById('nItemPrice').value;
-        if(id && n && p) db.ref(`xiangyi_shop/${id}/items`).push({ name: n, price: p });
-    }
-    function delI(cid, iid) { db.ref(`xiangyi_shop/${cid}/items/${iid}`).remove(); }
-    function delC(cid) { if(confirm('確定刪除此業務類別？')) db.ref(`xiangyi_shop/${cid}`).remove(); }
-
     async function sendOrder() {
         if (!userData) return alert("請先完成 Discord 帳號驗證！");
-        const cid = document.getElementById('pCat').value, item = document.getElementById('pItem').value, price = document.getElementById('pPrice').value;
-        if (!cid || !item || !price) return alert("預定資訊填寫不完整");
+        const cid = document.getElementById('pCat').value;
+        const price = document.getElementById('pPrice').value;
+        const selectedElements = document.querySelectorAll('input[name="shopItem"]:checked');
+        
+        if (!cid || selectedElements.length === 0 || !price) return alert("資訊填寫不完整（需選類別、至少一項商品與定金）");
+
+        let itemsArray = [];
+        selectedElements.forEach(el => itemsArray.push(el.value));
+        const itemsString = itemsArray.join(", ");
 
         await fetch(storeData[cid].webhook, {
             method: 'POST',
@@ -179,20 +179,22 @@
             body: JSON.stringify({
                 username: "翔毅車業系統通知",
                 embeds: [{
-                    title: `🏁 新預定單來自：${userData.username}`,
+                    title: `🏁 新預定單 (多項選購) - 顧客：${userData.username}`,
                     color: 16750848,
                     fields: [
                         { name: "👤 顧客 Discord", value: `<@${userData.id}>`, inline: true },
-                        { name: "🛠️ 預定項目", value: item, inline: true },
-                        { name: "💰 預付金額", value: "$" + price, inline: true }
-                    ],
-                    thumbnail: { url: `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` },
-                    timestamp: new Date()
-                }]
-            })
-        });
-        alert("預定成功！翔毅車業感謝您的支持。");
-    }
-</script>
-</body>
-</html>
+                        { name: "💰 預付金額", value: "$" + price, inline: true },
+                        { name: "🛠️ 預定內容", value: "
+http://googleusercontent.com/immersive_entry_chip/0
+
+### ✨ 這次更新改了什麼？
+1.  **類別內多選**：玩家先選「類別」，下方會立即出現該類別內的所有服務清單，玩家可以自由勾選多個項目。
+2.  **Discord 通知升級**：當玩家選了多項時，Discord 通知單會用「代碼框」整齊列出所有項目，讓你在手機上看一眼就清楚。
+3.  **UI 優化**：增加了一個帶有捲軸的展示盒，如果同類別東西很多，也不會把頁面撐開。
+
+### 🚨 提醒
+這次我依然使用了 `xiangyi_shop` 這個資料夾路徑。
+* 如果你已經在後台建好了「翔毅車業」的資料，這次覆蓋**不會消失**。
+* 如果你還沒建過，請直接用新介面進後台建立即可。
+
+**快去 GitHub 覆蓋並 Commit 吧！這樣玩家就可以一次預定「換油 + 輪胎 + 煞車」了！**
