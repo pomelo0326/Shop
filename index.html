@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v3.6</title>
+    <title>翔毅車業預定系統 v3.7</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
@@ -49,7 +49,10 @@
         <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號驗證</button>
         <div id="user-display" class="user-box">
             <img id="user-avatar" src="" alt="">
-            <span id="user-name"></span>
+            <div style="display:flex; flex-direction:column;">
+                <span id="user-name" style="font-weight:bold;"></span>
+                <span id="user-id-display" style="font-size:10px; color:#888;"></span>
+            </div>
         </div>
 
         <label>1. 選擇業務類別</label>
@@ -66,7 +69,7 @@
             <input type="number" id="pPrice" placeholder="系統試算結果">
         </div>
         
-        <button class="btn-send" onclick="sendOrder()">送出預定</button>
+        <button class="btn-send" id="submit-btn" onclick="sendOrder()">送出預定</button>
         <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin-top:40px;" onclick="showLogin()">⚙️ 翔毅員工管理中心</p>
     </div>
 
@@ -133,7 +136,7 @@
                 document.getElementById('login-btn').style.display = 'none';
                 document.getElementById('user-display').style.display = 'flex';
                 document.getElementById('user-name').innerText = res.username;
-                document.getElementById('user-avatar').src = `https://cdn.discordapp.com/avatars/${res.id}/${res.avatar}.png`;
+                document.getElementById('user-id-display').innerText = `ID: ${res.id}`;
             });
         }
         db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
@@ -196,38 +199,72 @@
         document.getElementById('pPrice').value = total;
     }
 
+    // 生成訂單編號函式
+    async function generateOrderNo() {
+        const now = new Date();
+        const dateStr = (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
+        const timeStr = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0');
+        
+        // 從資料庫獲取今日已有的訂單數來做流水號
+        const dayRef = db.ref('order_counters/' + dateStr);
+        const snapshot = await dayRef.transaction(currentCount => {
+            return (currentCount || 0) + 1;
+        });
+        const seq = snapshot.snapshot.val().toString().padStart(2, '0');
+        
+        return `${dateStr}${timeStr}${seq}`;
+    }
+
     async function sendOrder() {
-        if (!userData) return alert("請登入 Discord");
+        if (!userData) return alert("請先登入 Discord 帳號");
         const cid = document.getElementById('pCat').value, finalP = document.getElementById('pPrice').value;
         const sel = document.querySelectorAll('input[name="si"]:checked');
-        if (!cid || !sel.length) return alert("請勾選項目");
+        if (!cid || !sel.length) return alert("請勾選預定項目");
 
-        let details = [];
-        sel.forEach(el => {
-            const t = el.getAttribute('data-type'), id = el.getAttribute('data-id');
-            let info = el.value;
-            if(t==='custom') {
-                let v = document.querySelector(`#box-${id} input`).value || 0;
-                info += ` (原$${v}/收$${Math.floor(v*0.1)})`;
-            }
-            details.push(info);
-        });
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.innerText = "處理中...";
 
-        await fetch(storeData[cid].webhook, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                username: "翔毅車業",
-                embeds: [{
-                    title: `🏁 新訂單 - ${userData.username}`,
-                    fields: [
-                        { name: "👤 顧客", value: `<@${userData.id}>`, inline: true },
-                        { name: "💰 總金額", value: `$${finalP}`, inline: true },
-                        { name: "📋 明細", value: "```" + details.join("\n") + "```" }
-                    ]
-                }]
-            })
-        });
-        alert("送出成功");
+        try {
+            // 生成編號
+            const orderNo = await generateOrderNo();
+            
+            let details = [];
+            sel.forEach(el => {
+                const t = el.getAttribute('data-type'), id = el.getAttribute('data-id');
+                let info = el.value;
+                if(t==='custom') {
+                    let v = document.querySelector(`#box-${id} input`).value || 0;
+                    info += ` (原$${v}/收$${Math.floor(v*0.1)})`;
+                }
+                details.push(info);
+            });
+
+            await fetch(storeData[cid].webhook, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: "翔毅車業預定系統",
+                    embeds: [{
+                        title: `🆕 新預定單 #${orderNo}`,
+                        color: 16751104, // 橘色
+                        fields: [
+                            { name: "👤 顧客名稱", value: `<@${userData.id}>`, inline: true },
+                            { name: "🆔 Discord ID", value: `\`${userData.id}\``, inline: true },
+                            { name: "💰 預定總額", value: `**$${finalP}**`, inline: true },
+                            { name: "📋 預定項目明細", value: "```" + details.join("\n") + "```" },
+                            { name: "⏰ 下單時間", value: new Date().toLocaleString('zh-TW'), inline: false }
+                        ],
+                        footer: { text: "翔毅車業 · 預定成功" }
+                    }]
+                })
+            });
+            alert(`預定成功！\n您的訂單編號為：${orderNo}`);
+            location.reload();
+        } catch (e) {
+            alert("送出失敗，請聯絡管理員");
+            btn.disabled = false;
+            btn.innerText = "送出預定";
+        }
     }
 
     function setPriceMode(m) {
