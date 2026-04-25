@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v3.9</title>
+    <title>翔毅車業預定系統 v4.0</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -21,12 +21,17 @@
         input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; box-sizing: border-box; background: #2a2a2a; color: white; outline: none; }
         .btn-send { background: var(--accent); color: black; font-weight: bold; border: none; font-size: 16px; margin-top: 20px; cursor: pointer; }
 
-        .checkbox-group { background: #2a2a2a; border-radius: 8px; padding: 5px; max-height: 280px; overflow-y: auto; border: 1px solid #444; margin-top: 8px; }
+        .checkbox-group { background: #2a2a2a; border-radius: 8px; padding: 5px; max-height: 350px; overflow-y: auto; border: 1px solid #444; margin-top: 8px; }
         .item-option { display: flex; flex-direction: column; padding: 12px; border-bottom: 1px solid #333; }
         .item-main { display: flex; align-items: center; cursor: pointer; }
-        .item-main input { width: auto; margin-right: 12px; }
+        .item-main input[type="checkbox"] { width: auto; margin-right: 12px; }
         .price-tag { color: var(--accent); font-size: 12px; margin-left: auto; font-weight: bold; }
         
+        /* 零售數量控制區 */
+        .qty-control { display: none; align-items: center; gap: 10px; margin-top: 10px; padding: 8px; background: #1a1a1a; border-radius: 6px; }
+        .qty-btn { width: 30px; height: 30px; padding: 0; background: #444; border: none; color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        .qty-val { font-weight: bold; color: var(--accent); min-width: 20px; text-align: center; }
+
         .custom-price-input { margin-top: 10px; padding: 10px; background: #1a1a1a; border-left: 3px solid var(--accent); display: none; }
         
         .calc-hint { color: #fff; font-size: 13px; margin-top: 15px; background: rgba(255,153,0,0.08); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,153,0,0.2); line-height: 1.8; display: none; }
@@ -48,7 +53,7 @@
         .edit-btn { width: auto; background: #3498db; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
         
         .mode-toggle { display: flex; gap: 4px; margin-bottom: 10px; }
-        .mode-toggle button { flex: 1; font-size: 11px; padding: 6px; background: #444; border: none; }
+        .mode-toggle button { flex: 1; font-size: 11px; padding: 6px; background: #444; border: none; cursor: pointer; }
         .mode-toggle button.active { background: var(--accent); color: black; }
 
         /* 自定義彈窗 */
@@ -121,10 +126,11 @@
             <input type="text" id="nItemName" placeholder="項目名稱">
             <div class="mode-toggle">
                 <button id="modeSingle" class="active" onclick="setPriceMode('single')">固定價</button>
+                <button id="modeRetail" onclick="setPriceMode('retail')">零售(量)</button>
                 <button id="modeRange" onclick="setPriceMode('range')">範圍</button>
-                <button id="modeCustom" onclick="setPriceMode('custom')">自填(10%計)</button>
+                <button id="modeCustom" onclick="setPriceMode('custom')">自填(10%)</button>
             </div>
-            <div id="inputSingle"><input type="number" id="nItemPrice" placeholder="售價"></div>
+            <div id="inputSingle"><input type="number" id="nItemPrice" placeholder="售價 (或單價)"></div>
             <div id="inputRange" style="display:none; display:flex; gap:5px;"><input type="number" id="nPriceMin" placeholder="最低">~<input type="number" id="nPriceMax" placeholder="最高"></div>
             <button onclick="addItem()" style="margin-top:10px">確認上架</button>
         </div>
@@ -182,7 +188,6 @@
             pC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
             aC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
             
-            // 建立分類卡片
             const catDiv = document.createElement('div');
             catDiv.className = 'cat-card';
             catDiv.innerHTML = `
@@ -195,8 +200,6 @@
             aLC.appendChild(catDiv);
 
             const itemListDiv = catDiv.querySelector('.sortable-list');
-            
-            // 處理項目排序 (若無序則依照 firebase key)
             const itemsArray = [];
             for (let iId in cat.items) {
                 itemsArray.push({ id: iId, ...cat.items[iId] });
@@ -204,7 +207,12 @@
             itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
 
             itemsArray.forEach(it => {
-                const priceLabel = it.type === 'single' ? `$${it.price}` : (it.type === 'range' ? `$${it.min}-${it.max}` : '自填10%');
+                let priceLabel = '';
+                if(it.type === 'single') priceLabel = `$${it.price}`;
+                else if(it.type === 'retail') priceLabel = `$${it.price}/個`;
+                else if(it.type === 'range') priceLabel = `$${it.min}-${it.max}`;
+                else priceLabel = '自填10%';
+
                 const row = document.createElement('div');
                 row.className = 'item-row';
                 row.dataset.id = it.id;
@@ -221,7 +229,6 @@
                 itemListDiv.appendChild(row);
             });
 
-            // 初始化拖拽功能
             new Sortable(itemListDiv, {
                 handle: '.drag-handle',
                 animation: 150,
@@ -231,7 +238,6 @@
         }
     }
 
-    // 儲存新的排序權重
     function saveOrder(catId) {
         const list = document.getElementById(`list-${catId}`);
         const rows = list.querySelectorAll('.item-row');
@@ -256,7 +262,7 @@
         document.getElementById('modal-item-name').innerText = item.name;
         inputArea.innerHTML = '';
         
-        if (item.type === 'single') {
+        if (item.type === 'single' || item.type === 'retail') {
             inputArea.innerHTML = `<input type="number" id="edit-price" value="${item.price}" placeholder="輸入新售價">`;
             confirmBtn.onclick = () => {
                 const newP = document.getElementById('edit-price').value;
@@ -291,7 +297,6 @@
         if (id && storeData[id].items) {
             document.getElementById('calc-section').style.display = 'block';
             
-            // 依照 order 排序顯示給使用者
             const itemsArray = [];
             for (let iId in storeData[id].items) {
                 itemsArray.push({ id: iId, ...storeData[id].items[iId] });
@@ -299,35 +304,92 @@
             itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
 
             itemsArray.forEach(it => {
-                let pt = it.type==='custom' ? '自填總價' : (it.type==='range' ? `$${it.min}~${it.max}` : `$${it.price}`);
-                let customInput = it.type==='custom' ? `<div class="custom-price-input" id="box-${it.id}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>` : '';
-                listDiv.innerHTML += `<div class="item-option"><label class="item-main"><input type="checkbox" name="si" value="${it.name}" data-type="${it.type}" data-id="${it.id}" data-p="${it.price||0}" onchange="toggleBox('${it.id}', this.checked)"><span>${it.name}</span><span class="price-tag">${pt}</span></label>${customInput}</div>`;
+                let pt = '';
+                if(it.type==='custom') pt = '自填總價';
+                else if(it.type==='retail') pt = `$${it.price}/個`;
+                else if(it.type==='range') pt = `$${it.min}~${it.max}`;
+                else pt = `$${it.price}`;
+
+                let extraUI = '';
+                if(it.type==='custom') {
+                    extraUI = `<div class="custom-price-input" id="box-${it.id}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>`;
+                } else if(it.type==='retail') {
+                    extraUI = `
+                        <div class="qty-control" id="qty-box-${it.id}">
+                            <span style="font-size:12px; color:#888">購買數量：</span>
+                            <button class="qty-btn" onclick="changeQty('${it.id}', -1)">-</button>
+                            <span class="qty-val" id="qty-val-${it.id}">1</span>
+                            <button class="qty-btn" onclick="changeQty('${it.id}', 1)">+</button>
+                        </div>`;
+                }
+
+                listDiv.innerHTML += `
+                    <div class="item-option">
+                        <label class="item-main">
+                            <input type="checkbox" name="si" value="${it.name}" data-type="${it.type}" data-id="${it.id}" data-p="${it.price||0}" onchange="toggleExtra('${it.id}', '${it.type}', this.checked)">
+                            <span>${it.name}</span>
+                            <span class="price-tag">${pt}</span>
+                        </label>
+                        ${extraUI}
+                    </div>`;
             });
         }
         recalc();
     }
 
-    function toggleBox(id, c) {
-        const b = document.getElementById(`box-${id}`);
-        if(b) b.style.display = c ? 'block' : 'none';
+    function toggleExtra(id, type, checked) {
+        if(type === 'custom') {
+            const b = document.getElementById(`box-${id}`);
+            if(b) b.style.display = checked ? 'block' : 'none';
+        } else if(type === 'retail') {
+            const b = document.getElementById(`qty-box-${id}`);
+            if(b) b.style.display = checked ? 'flex' : 'none';
+            if(!checked) document.getElementById(`qty-val-${id}`).innerText = '1';
+        }
+        recalc();
+    }
+
+    function changeQty(id, delta) {
+        const span = document.getElementById(`qty-val-${id}`);
+        let current = parseInt(span.innerText);
+        current = Math.max(1, current + delta);
+        span.innerText = current;
         recalc();
     }
 
     function recalc() {
-        let fixed = 0, customOrig = 0;
+        let fixed = 0, customOrig = 0, retailTotal = 0;
         const sel = document.querySelectorAll('input[name="si"]:checked');
-        if(!sel.length) { document.getElementById('total-calc-hint').style.display = 'none'; document.getElementById('pPrice').value=''; return; }
+        if(!sel.length) { 
+            document.getElementById('total-calc-hint').style.display = 'none'; 
+            document.getElementById('pPrice').value=''; 
+            return; 
+        }
         
         sel.forEach(el => {
             const t = el.getAttribute('data-type'), id = el.getAttribute('data-id');
-            if(t === 'custom') customOrig += parseFloat(document.querySelector(`#box-${id} input`).value) || 0;
-            else if(t === 'single') fixed += parseFloat(el.getAttribute('data-p')) || 0;
+            const p = parseFloat(el.getAttribute('data-p')) || 0;
+
+            if(t === 'custom') {
+                customOrig += parseFloat(document.querySelector(`#box-${id} input`).value) || 0;
+            } else if(t === 'retail') {
+                const qty = parseInt(document.getElementById(`qty-val-${id}`).innerText);
+                retailTotal += (p * qty);
+            } else if(t === 'single') {
+                fixed += p;
+            }
         });
 
         const cFinal = Math.floor(customOrig * 0.1);
-        const total = fixed + cFinal;
+        const total = fixed + retailTotal + cFinal;
+        
         document.getElementById('total-calc-hint').style.display = 'block';
-        document.getElementById('total-calc-hint').innerHTML = `固定項目：$${fixed}<br>委託10%：$${cFinal}<br>-------------------<br>總金額：<b>$${total}</b>`;
+        document.getElementById('total-calc-hint').innerHTML = `
+            ${fixed > 0 ? `服務項目：$${fixed}<br>` : ''}
+            ${retailTotal > 0 ? `零售小計：$${retailTotal}<br>` : ''}
+            ${cFinal > 0 ? `委託10%：$${cFinal}<br>` : ''}
+            -------------------<br>
+            總金額：<b>$${total}</b>`;
         document.getElementById('pPrice').value = total;
     }
 
@@ -357,11 +419,16 @@
             const orderNo = await generateOrderNo();
             let details = [];
             sel.forEach(el => {
-                const t = el.getAttribute('data-type'), id = el.getAttribute('data-id');
+                const t = el.getAttribute('data-type'), id = el.getAttribute('data-id'), p = parseFloat(el.getAttribute('data-p')) || 0;
                 let info = el.value;
                 if(t==='custom') {
                     let v = document.querySelector(`#box-${id} input`).value || 0;
-                    info += ` (原$${v}/收$${Math.floor(v*0.1)})`;
+                    info += ` (原價$${v}/抽成$${Math.floor(v*0.1)})`;
+                } else if(t==='retail') {
+                    const qty = document.getElementById(`qty-val-${id}`).innerText;
+                    info += ` x${qty} ($${p*qty})`;
+                } else {
+                    info += ` ($${p})`;
                 }
                 details.push(info);
             });
@@ -396,9 +463,11 @@
     function setPriceMode(m) {
         currentMode = m;
         document.getElementById('modeSingle').classList.toggle('active', m==='single');
+        document.getElementById('modeRetail').classList.toggle('active', m==='retail');
         document.getElementById('modeRange').classList.toggle('active', m==='range');
         document.getElementById('modeCustom').classList.toggle('active', m==='custom');
-        document.getElementById('inputSingle').style.display = m==='single' ? 'block' : 'none';
+        
+        document.getElementById('inputSingle').style.display = (m==='single' || m==='retail') ? 'block' : 'none';
         document.getElementById('inputRange').style.display = m==='range' ? 'flex' : 'none';
     }
 
@@ -419,7 +488,6 @@
         const id = document.getElementById('aCatSelect').value, n = document.getElementById('nItemName').value;
         if(!id || !n) return alert('請完整填寫項目資訊');
         
-        // 取得目前該分類下最大的 order 數值
         let maxOrder = -1;
         if(storeData[id].items) {
             Object.values(storeData[id].items).forEach(item => {
@@ -428,7 +496,7 @@
         }
 
         let d = { name: n, type: currentMode, order: maxOrder + 1 };
-        if(currentMode==='single') d.price = document.getElementById('nItemPrice').value;
+        if(currentMode==='single' || currentMode==='retail') d.price = document.getElementById('nItemPrice').value;
         else if(currentMode==='range') { d.min=document.getElementById('nPriceMin').value; d.max=document.getElementById('nPriceMax').value; }
         
         db.ref(`xiangyi_shop/${id}/items`).push(d);
