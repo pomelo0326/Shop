@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v3.8</title>
+    <title>翔毅車業預定系統 v3.9</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        :root { --main: #5865F2; --bg: #121212; --card: #1e1e1e; --accent: #ff9900; --text: #eeeeee; }
+        :root { --main: #5865F2; --bg: #121212; --card: #1e1e1e; --accent: #ff9900; --text: #eeeeee; --row-bg: #2a2a2a; }
         body { font-family: 'Segoe UI', "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .card { background: var(--card); padding: 25px; border-radius: 15px; max-width: 500px; margin: auto; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         h2 { color: var(--accent); text-align: center; letter-spacing: 2px; margin-top: 0; }
@@ -31,25 +32,32 @@
         .calc-hint { color: #fff; font-size: 13px; margin-top: 15px; background: rgba(255,153,0,0.08); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,153,0,0.2); line-height: 1.8; display: none; }
         .calc-hint b { color: var(--accent); font-size: 20px; }
 
+        /* 管理者樣式優化 */
         .admin-section { display: none; border-top: 2px dashed #444; margin-top: 30px; padding-top: 20px; }
         .cat-card { background: #1a1a1a; border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
-        .item-row { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 8px 12px; border-radius: 5px; margin-top: 5px; font-size: 12px; }
-        .item-info { flex: 1; }
-        .admin-btns { display: flex; gap: 5px; }
-        .del-btn { width: auto; background: #ff4444; padding: 4px 8px; font-size: 11px; cursor: pointer; border: none; margin: 0; }
-        .edit-btn { width: auto; background: #4a90e2; padding: 4px 8px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
+        .cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        
+        .item-row { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 10px 12px; border-radius: 8px; margin-top: 8px; font-size: 13px; border: 1px solid #444; cursor: default; }
+        .item-row.sortable-ghost { opacity: 0.4; background: var(--main); }
+        .drag-handle { cursor: grab; color: #666; margin-right: 10px; font-size: 18px; user-select: none; }
+        .drag-handle:active { cursor: grabbing; }
+        
+        .item-info { flex: 1; display: flex; align-items: center; }
+        .admin-btns { display: flex; gap: 8px; }
+        .del-btn { width: auto; background: #e74c3c; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
+        .edit-btn { width: auto; background: #3498db; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
+        
         .mode-toggle { display: flex; gap: 4px; margin-bottom: 10px; }
         .mode-toggle button { flex: 1; font-size: 11px; padding: 6px; background: #444; border: none; }
         .mode-toggle button.active { background: var(--accent); color: black; }
 
-        /* 自定義彈窗樣式，取代 alert/confirm */
+        /* 自定義彈窗 */
         #custom-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2a2a2a; padding: 20px; border-radius: 10px; border: 2px solid var(--accent); z-index: 1000; box-shadow: 0 0 20px rgba(0,0,0,0.8); width: 80%; max-width: 300px; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 999; }
     </style>
 </head>
 <body>
 
-<!-- 自定義改價彈窗 -->
 <div class="modal-overlay" id="modal-overlay"></div>
 <div id="custom-modal">
     <h4 style="margin-top:0">修改價格</h4>
@@ -120,7 +128,7 @@
             <div id="inputRange" style="display:none; display:flex; gap:5px;"><input type="number" id="nPriceMin" placeholder="最低">~<input type="number" id="nPriceMax" placeholder="最高"></div>
             <button onclick="addItem()" style="margin-top:10px">確認上架</button>
         </div>
-        <div id="admin-list"></div>
+        <div id="admin-list-container"></div>
     </div>
 </div>
 
@@ -158,33 +166,85 @@
                 document.getElementById('user-id-display').innerText = `ID: ${res.id}`;
             });
         }
-        db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
+        db.ref('xiangyi_shop').on('value', s => { 
+            storeData = s.val() || {}; 
+            refreshUI(); 
+        });
     };
 
     function refreshUI() {
-        const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aL = document.getElementById('admin-list');
+        const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
         pC.innerHTML = '<option value="">請選擇...</option>'; aC.innerHTML = '<option value="">請選擇...</option>';
-        aL.innerHTML = '';
-        for (let id in storeData) {
-            const c = storeData[id];
-            pC.innerHTML += `<option value="${id}">${c.name}</option>`;
-            aC.innerHTML += `<option value="${id}">${c.name}</option>`;
-            let itemsHtml = '';
-            for (let iId in c.items) {
-                const it = c.items[iId];
-                let priceLabel = it.type === 'single' ? `$${it.price}` : (it.type === 'range' ? `$${it.min}-${it.max}` : '自填10%');
-                itemsHtml += `
-                    <div class="item-row">
-                        <div class="item-info"><b>${it.name}</b> <span style="color:#888">(${priceLabel})</span></div>
-                        <div class="admin-btns">
-                            <button class="edit-btn" onclick="openEditModal('${id}', '${iId}')">改價</button>
-                            <button class="del-btn" onclick="db.ref('xiangyi_shop/${id}/items/${iId}').remove()">下架</button>
-                        </div>
-                    </div>`;
+        aLC.innerHTML = '';
+
+        for (let catId in storeData) {
+            const cat = storeData[catId];
+            pC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
+            aC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
+            
+            // 建立分類卡片
+            const catDiv = document.createElement('div');
+            catDiv.className = 'cat-card';
+            catDiv.innerHTML = `
+                <div class="cat-header">
+                    <b>${cat.name}</b>
+                    <button class="del-btn" style="background:#555" onclick="deleteCategory('${catId}')">刪除分類</button>
+                </div>
+                <div id="list-${catId}" class="sortable-list"></div>
+            `;
+            aLC.appendChild(catDiv);
+
+            const itemListDiv = catDiv.querySelector('.sortable-list');
+            
+            // 處理項目排序 (若無序則依照 firebase key)
+            const itemsArray = [];
+            for (let iId in cat.items) {
+                itemsArray.push({ id: iId, ...cat.items[iId] });
             }
-            aL.innerHTML += `<div class="cat-card"><b>${c.name}</b> <button class="del-btn" style="background:#666" onclick="db.ref('xiangyi_shop/${id}').remove()">刪除</button>${itemsHtml}</div>`;
+            itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+            itemsArray.forEach(it => {
+                const priceLabel = it.type === 'single' ? `$${it.price}` : (it.type === 'range' ? `$${it.min}-${it.max}` : '自填10%');
+                const row = document.createElement('div');
+                row.className = 'item-row';
+                row.dataset.id = it.id;
+                row.innerHTML = `
+                    <div class="item-info">
+                        <span class="drag-handle">⠿</span>
+                        <div><b>${it.name}</b> <span style="color:#888">(${priceLabel})</span></div>
+                    </div>
+                    <div class="admin-btns">
+                        <button class="edit-btn" onclick="openEditModal('${catId}', '${it.id}')">改價</button>
+                        <button class="del-btn" onclick="deleteItem('${catId}', '${it.id}')">下架</button>
+                    </div>
+                `;
+                itemListDiv.appendChild(row);
+            });
+
+            // 初始化拖拽功能
+            new Sortable(itemListDiv, {
+                handle: '.drag-handle',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: () => saveOrder(catId)
+            });
         }
     }
+
+    // 儲存新的排序權重
+    function saveOrder(catId) {
+        const list = document.getElementById(`list-${catId}`);
+        const rows = list.querySelectorAll('.item-row');
+        const updates = {};
+        rows.forEach((row, index) => {
+            const itemId = row.dataset.id;
+            updates[`/xiangyi_shop/${catId}/items/${itemId}/order`] = index;
+        });
+        db.ref().update(updates);
+    }
+
+    function deleteCategory(id) { if(confirm('確定要刪除整個分類嗎？')) db.ref(`xiangyi_shop/${id}`).remove(); }
+    function deleteItem(catId, itemId) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).remove(); }
 
     function openEditModal(catId, itemId) {
         const item = storeData[catId].items[itemId];
@@ -230,12 +290,19 @@
         listDiv.innerHTML = '';
         if (id && storeData[id].items) {
             document.getElementById('calc-section').style.display = 'block';
+            
+            // 依照 order 排序顯示給使用者
+            const itemsArray = [];
             for (let iId in storeData[id].items) {
-                const it = storeData[id].items[iId];
-                let pt = it.type==='custom' ? '自填總價' : (it.type==='range' ? `$${it.min}~${it.max}` : `$${it.price}`);
-                let customInput = it.type==='custom' ? `<div class="custom-price-input" id="box-${iId}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>` : '';
-                listDiv.innerHTML += `<div class="item-option"><label class="item-main"><input type="checkbox" name="si" value="${it.name}" data-type="${it.type}" data-id="${iId}" data-p="${it.price||0}" onchange="toggleBox('${iId}', this.checked)"><span>${it.name}</span><span class="price-tag">${pt}</span></label>${customInput}</div>`;
+                itemsArray.push({ id: iId, ...storeData[id].items[iId] });
             }
+            itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+            itemsArray.forEach(it => {
+                let pt = it.type==='custom' ? '自填總價' : (it.type==='range' ? `$${it.min}~${it.max}` : `$${it.price}`);
+                let customInput = it.type==='custom' ? `<div class="custom-price-input" id="box-${it.id}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>` : '';
+                listDiv.innerHTML += `<div class="item-option"><label class="item-main"><input type="checkbox" name="si" value="${it.name}" data-type="${it.type}" data-id="${it.id}" data-p="${it.price||0}" onchange="toggleBox('${it.id}', this.checked)"><span>${it.name}</span><span class="price-tag">${pt}</span></label>${customInput}</div>`;
+            });
         }
         recalc();
     }
@@ -249,7 +316,7 @@
     function recalc() {
         let fixed = 0, customOrig = 0;
         const sel = document.querySelectorAll('input[name="si"]:checked');
-        if(!sel.length) { document.getElementById('total-calc-hint').style.display = 'none'; return; }
+        if(!sel.length) { document.getElementById('total-calc-hint').style.display = 'none'; document.getElementById('pPrice').value=''; return; }
         
         sel.forEach(el => {
             const t = el.getAttribute('data-type'), id = el.getAttribute('data-id');
@@ -313,7 +380,7 @@
                             { name: "📋 預定項目明細", value: "```" + details.join("\n") + "```" },
                             { name: "⏰ 下單時間", value: new Date().toLocaleString('zh-TW'), inline: false }
                         ],
-                        footer: { text: "翔毅車業 · 預定成功" }
+                        footer: { text: "翔毅車業 · 預訂系統" }
                     }]
                 })
             });
@@ -343,14 +410,29 @@
     }
     function addCat() {
         const n = document.getElementById('nCatName').value, w = document.getElementById('nCatWeb').value;
-        if(n && w) db.ref('xiangyi_shop').push({ name: n, webhook: w });
+        if(n && w) {
+            db.ref('xiangyi_shop').push({ name: n, webhook: w });
+            document.getElementById('nCatName').value = ''; document.getElementById('nCatWeb').value = '';
+        }
     }
     function addItem() {
         const id = document.getElementById('aCatSelect').value, n = document.getElementById('nItemName').value;
-        let d = { name: n, type: currentMode };
+        if(!id || !n) return alert('請完整填寫項目資訊');
+        
+        // 取得目前該分類下最大的 order 數值
+        let maxOrder = -1;
+        if(storeData[id].items) {
+            Object.values(storeData[id].items).forEach(item => {
+                if(item.order > maxOrder) maxOrder = item.order;
+            });
+        }
+
+        let d = { name: n, type: currentMode, order: maxOrder + 1 };
         if(currentMode==='single') d.price = document.getElementById('nItemPrice').value;
         else if(currentMode==='range') { d.min=document.getElementById('nPriceMin').value; d.max=document.getElementById('nPriceMax').value; }
+        
         db.ref(`xiangyi_shop/${id}/items`).push(d);
+        document.getElementById('nItemName').value = '';
     }
 </script>
 </body>
