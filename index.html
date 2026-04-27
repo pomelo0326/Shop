@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v4.0</title>
+    <title>翔毅車業預定系統 v4.1</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -40,7 +40,7 @@
         /* 管理者樣式優化 */
         .admin-section { display: none; border-top: 2px dashed #444; margin-top: 30px; padding-top: 20px; }
         .cat-card { background: #1a1a1a; border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
-        .cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px; }
         
         .item-row { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 10px 12px; border-radius: 8px; margin-top: 8px; font-size: 13px; border: 1px solid #444; cursor: default; }
         .item-row.sortable-ghost { opacity: 0.4; background: var(--main); }
@@ -51,6 +51,7 @@
         .admin-btns { display: flex; gap: 8px; }
         .del-btn { width: auto; background: #e74c3c; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
         .edit-btn { width: auto; background: #3498db; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
+        .webhook-btn { width: auto; background: #9b59b6; padding: 4px 8px; font-size: 10px; cursor: pointer; border: none; margin: 0; color: white; border-radius: 4px; }
         
         .mode-toggle { display: flex; gap: 4px; margin-bottom: 10px; }
         .mode-toggle button { flex: 1; font-size: 11px; padding: 6px; background: #444; border: none; cursor: pointer; }
@@ -65,7 +66,7 @@
 
 <div class="modal-overlay" id="modal-overlay"></div>
 <div id="custom-modal">
-    <h4 style="margin-top:0">修改價格</h4>
+    <h4 id="modal-title" style="margin-top:0">修改資訊</h4>
     <p id="modal-item-name" style="font-size:12px; color:#aaa;"></p>
     <div id="modal-input-area"></div>
     <div style="display:flex; gap:10px; margin-top:10px;">
@@ -192,7 +193,10 @@
             catDiv.className = 'cat-card';
             catDiv.innerHTML = `
                 <div class="cat-header">
-                    <b>${cat.name}</b>
+                    <div>
+                        <b>${cat.name}</b>
+                        <br><button class="webhook-btn" onclick="openWebhookModal('${catId}')">修改 Webhook (網址)</button>
+                    </div>
                     <button class="del-btn" style="background:#555" onclick="deleteCategory('${catId}')">刪除分類</button>
                 </div>
                 <div id="list-${catId}" class="sortable-list"></div>
@@ -238,6 +242,33 @@
         }
     }
 
+    // --- 修改 Webhook 的彈窗控制 ---
+    function openWebhookModal(catId) {
+        const cat = storeData[catId];
+        const modal = document.getElementById('custom-modal');
+        const overlay = document.getElementById('modal-overlay');
+        const inputArea = document.getElementById('modal-input-area');
+        const confirmBtn = document.getElementById('modal-confirm');
+        
+        document.getElementById('modal-title').innerText = "修改 Webhook 網址";
+        document.getElementById('modal-item-name').innerText = `分類：${cat.name}`;
+        
+        inputArea.innerHTML = `<input type="text" id="edit-webhook" value="${cat.webhook || ''}" placeholder="貼上新的 Discord Webhook 網址">`;
+        
+        confirmBtn.onclick = () => {
+            const newW = document.getElementById('edit-webhook').value;
+            if(newW) { 
+                db.ref(`xiangyi_shop/${catId}`).update({ webhook: newW }); 
+                closeModal(); 
+            } else {
+                alert("網址不能為空");
+            }
+        };
+
+        modal.style.display = 'block';
+        overlay.style.display = 'block';
+    }
+
     function saveOrder(catId) {
         const list = document.getElementById(`list-${catId}`);
         const rows = list.querySelectorAll('.item-row');
@@ -259,6 +290,7 @@
         const inputArea = document.getElementById('modal-input-area');
         const confirmBtn = document.getElementById('modal-confirm');
         
+        document.getElementById('modal-title').innerText = "修改價格";
         document.getElementById('modal-item-name').innerText = item.name;
         inputArea.innerHTML = '';
         
@@ -454,7 +486,7 @@
             alert(`預定成功！\n您的訂單編號為：${orderNo}`);
             location.reload();
         } catch (e) {
-            alert("送出失敗，請聯絡管理員");
+            alert("送出失敗，請檢查該分類的 Webhook 網址是否正確");
             btn.disabled = false;
             btn.innerText = "送出預定";
         }
