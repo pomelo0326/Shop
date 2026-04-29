@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v4.1</title>
+    <title>翔毅車業預定系統 v4.2</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -27,17 +27,20 @@
         .item-main input[type="checkbox"] { width: auto; margin-right: 12px; }
         .price-tag { color: var(--accent); font-size: 12px; margin-left: auto; font-weight: bold; }
         
-        /* 零售數量控制區 */
-        .qty-control { display: none; align-items: center; gap: 10px; margin-top: 10px; padding: 8px; background: #1a1a1a; border-radius: 6px; }
-        .qty-btn { width: 30px; height: 30px; padding: 0; background: #444; border: none; color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
-        .qty-val { font-weight: bold; color: var(--accent); min-width: 20px; text-align: center; }
+        /* 零售數量控制區 - 更新為含輸入框的樣式 */
+        .qty-control { display: none; align-items: center; gap: 8px; margin-top: 10px; padding: 8px; background: #1a1a1a; border-radius: 6px; }
+        .qty-btn { width: 36px; height: 36px; padding: 0; background: #444; border: none; color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .qty-btn:hover { background: #555; }
+        .qty-input { width: 60px !important; height: 36px !important; text-align: center; margin: 0 !important; padding: 0 !important; font-size: 16px; font-weight: bold; color: var(--accent); background: #222 !important; border: 1px solid #444 !important; }
+        /* 隱藏 Chrome/Safari 數字箭頭 */
+        .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
         .custom-price-input { margin-top: 10px; padding: 10px; background: #1a1a1a; border-left: 3px solid var(--accent); display: none; }
         
         .calc-hint { color: #fff; font-size: 13px; margin-top: 15px; background: rgba(255,153,0,0.08); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,153,0,0.2); line-height: 1.8; display: none; }
         .calc-hint b { color: var(--accent); font-size: 20px; }
 
-        /* 管理者樣式優化 */
+        /* 管理者樣式 */
         .admin-section { display: none; border-top: 2px dashed #444; margin-top: 30px; padding-top: 20px; }
         .cat-card { background: #1a1a1a; border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
         .cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px; }
@@ -205,9 +208,7 @@
 
             const itemListDiv = catDiv.querySelector('.sortable-list');
             const itemsArray = [];
-            for (let iId in cat.items) {
-                itemsArray.push({ id: iId, ...cat.items[iId] });
-            }
+            for (let iId in cat.items) itemsArray.push({ id: iId, ...cat.items[iId] });
             itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
 
             itemsArray.forEach(it => {
@@ -233,50 +234,27 @@
                 itemListDiv.appendChild(row);
             });
 
-            new Sortable(itemListDiv, {
-                handle: '.drag-handle',
-                animation: 150,
-                ghostClass: 'sortable-ghost',
-                onEnd: () => saveOrder(catId)
-            });
+            new Sortable(itemListDiv, { handle: '.drag-handle', animation: 150, ghostClass: 'sortable-ghost', onEnd: () => saveOrder(catId) });
         }
     }
 
-    // --- 修改 Webhook 的彈窗控制 ---
     function openWebhookModal(catId) {
         const cat = storeData[catId];
-        const modal = document.getElementById('custom-modal');
-        const overlay = document.getElementById('modal-overlay');
-        const inputArea = document.getElementById('modal-input-area');
-        const confirmBtn = document.getElementById('modal-confirm');
-        
+        const modal = document.getElementById('custom-modal'), overlay = document.getElementById('modal-overlay'), inputArea = document.getElementById('modal-input-area'), confirmBtn = document.getElementById('modal-confirm');
         document.getElementById('modal-title').innerText = "修改 Webhook 網址";
         document.getElementById('modal-item-name').innerText = `分類：${cat.name}`;
-        
         inputArea.innerHTML = `<input type="text" id="edit-webhook" value="${cat.webhook || ''}" placeholder="貼上新的 Discord Webhook 網址">`;
-        
         confirmBtn.onclick = () => {
             const newW = document.getElementById('edit-webhook').value;
-            if(newW) { 
-                db.ref(`xiangyi_shop/${catId}`).update({ webhook: newW }); 
-                closeModal(); 
-            } else {
-                alert("網址不能為空");
-            }
+            if(newW) { db.ref(`xiangyi_shop/${catId}`).update({ webhook: newW }); closeModal(); }
+            else alert("網址不能為空");
         };
-
-        modal.style.display = 'block';
-        overlay.style.display = 'block';
+        modal.style.display = 'block'; overlay.style.display = 'block';
     }
 
     function saveOrder(catId) {
-        const list = document.getElementById(`list-${catId}`);
-        const rows = list.querySelectorAll('.item-row');
-        const updates = {};
-        rows.forEach((row, index) => {
-            const itemId = row.dataset.id;
-            updates[`/xiangyi_shop/${catId}/items/${itemId}/order`] = index;
-        });
+        const list = document.getElementById(`list-${catId}`), rows = list.querySelectorAll('.item-row'), updates = {};
+        rows.forEach((row, index) => { updates[`/xiangyi_shop/${catId}/items/${row.dataset.id}/order`] = index; });
         db.ref().update(updates);
     }
 
@@ -285,15 +263,10 @@
 
     function openEditModal(catId, itemId) {
         const item = storeData[catId].items[itemId];
-        const modal = document.getElementById('custom-modal');
-        const overlay = document.getElementById('modal-overlay');
-        const inputArea = document.getElementById('modal-input-area');
-        const confirmBtn = document.getElementById('modal-confirm');
-        
+        const modal = document.getElementById('custom-modal'), overlay = document.getElementById('modal-overlay'), inputArea = document.getElementById('modal-input-area'), confirmBtn = document.getElementById('modal-confirm');
         document.getElementById('modal-title').innerText = "修改價格";
         document.getElementById('modal-item-name').innerText = item.name;
         inputArea.innerHTML = '';
-        
         if (item.type === 'single' || item.type === 'retail') {
             inputArea.innerHTML = `<input type="number" id="edit-price" value="${item.price}" placeholder="輸入新售價">`;
             confirmBtn.onclick = () => {
@@ -301,9 +274,7 @@
                 if(newP) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: newP }); closeModal(); }
             };
         } else if (item.type === 'range') {
-            inputArea.innerHTML = `
-                <input type="number" id="edit-min" value="${item.min}" placeholder="最低">
-                <input type="number" id="edit-max" value="${item.max}" placeholder="最高">`;
+            inputArea.innerHTML = `<input type="number" id="edit-min" value="${item.min}" placeholder="最低"><input type="number" id="edit-max" value="${item.max}" placeholder="最高">`;
             confirmBtn.onclick = () => {
                 const min = document.getElementById('edit-min').value, max = document.getElementById('edit-max').value;
                 if(min && max) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ min, max }); closeModal(); }
@@ -312,49 +283,35 @@
             inputArea.innerHTML = `<p style="font-size:12px; color:#ff4444">自填項目無需預設價格</p>`;
             confirmBtn.onclick = closeModal;
         }
-
-        modal.style.display = 'block';
-        overlay.style.display = 'block';
+        modal.style.display = 'block'; overlay.style.display = 'block';
     }
 
-    function closeModal() {
-        document.getElementById('custom-modal').style.display = 'none';
-        document.getElementById('modal-overlay').style.display = 'none';
-    }
+    function closeModal() { document.getElementById('custom-modal').style.display = 'none'; document.getElementById('modal-overlay').style.display = 'none'; }
 
     function updateItems() {
-        const id = document.getElementById('pCat').value;
-        const listDiv = document.getElementById('item-list');
+        const id = document.getElementById('pCat').value, listDiv = document.getElementById('item-list');
         listDiv.innerHTML = '';
         if (id && storeData[id].items) {
             document.getElementById('calc-section').style.display = 'block';
-            
             const itemsArray = [];
-            for (let iId in storeData[id].items) {
-                itemsArray.push({ id: iId, ...storeData[id].items[iId] });
-            }
+            for (let iId in storeData[id].items) itemsArray.push({ id: iId, ...storeData[id].items[iId] });
             itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
 
             itemsArray.forEach(it => {
-                let pt = '';
-                if(it.type==='custom') pt = '自填總價';
-                else if(it.type==='retail') pt = `$${it.price}/個`;
-                else if(it.type==='range') pt = `$${it.min}~${it.max}`;
-                else pt = `$${it.price}`;
-
+                let pt = (it.type==='custom') ? '自填總價' : (it.type==='retail') ? `$${it.price}/個` : (it.type==='range') ? `$${it.min}~${it.max}` : `$${it.price}`;
                 let extraUI = '';
                 if(it.type==='custom') {
                     extraUI = `<div class="custom-price-input" id="box-${it.id}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>`;
                 } else if(it.type==='retail') {
+                    // 更新數量控制區：改為輸入框
                     extraUI = `
                         <div class="qty-control" id="qty-box-${it.id}">
-                            <span style="font-size:12px; color:#888">購買數量：</span>
+                            <span style="font-size:12px; color:#888">數量：</span>
                             <button class="qty-btn" onclick="changeQty('${it.id}', -1)">-</button>
-                            <span class="qty-val" id="qty-val-${it.id}">1</span>
+                            <input type="number" class="qty-input" id="qty-val-${it.id}" value="1" min="1" oninput="recalc()">
                             <button class="qty-btn" onclick="changeQty('${it.id}', 1)">+</button>
                         </div>`;
                 }
-
                 listDiv.innerHTML += `
                     <div class="item-option">
                         <label class="item-main">
@@ -376,52 +333,41 @@
         } else if(type === 'retail') {
             const b = document.getElementById(`qty-box-${id}`);
             if(b) b.style.display = checked ? 'flex' : 'none';
-            if(!checked) document.getElementById(`qty-val-${id}`).innerText = '1';
+            if(!checked) document.getElementById(`qty-val-${id}`).value = '1';
         }
         recalc();
     }
 
     function changeQty(id, delta) {
-        const span = document.getElementById(`qty-val-${id}`);
-        let current = parseInt(span.innerText);
+        const input = document.getElementById(`qty-val-${id}`);
+        let current = parseInt(input.value) || 1;
         current = Math.max(1, current + delta);
-        span.innerText = current;
+        input.value = current;
         recalc();
     }
 
     function recalc() {
         let fixed = 0, customOrig = 0, retailTotal = 0;
         const sel = document.querySelectorAll('input[name="si"]:checked');
-        if(!sel.length) { 
-            document.getElementById('total-calc-hint').style.display = 'none'; 
-            document.getElementById('pPrice').value=''; 
-            return; 
-        }
+        if(!sel.length) { document.getElementById('total-calc-hint').style.display = 'none'; document.getElementById('pPrice').value=''; return; }
         
         sel.forEach(el => {
-            const t = el.getAttribute('data-type'), id = el.getAttribute('data-id');
-            const p = parseFloat(el.getAttribute('data-p')) || 0;
-
-            if(t === 'custom') {
-                customOrig += parseFloat(document.querySelector(`#box-${id} input`).value) || 0;
-            } else if(t === 'retail') {
-                const qty = parseInt(document.getElementById(`qty-val-${id}`).innerText);
+            const t = el.getAttribute('data-type'), id = el.getAttribute('data-id'), p = parseFloat(el.getAttribute('data-p')) || 0;
+            if(t === 'custom') customOrig += parseFloat(document.querySelector(`#box-${id} input`).value) || 0;
+            else if(t === 'retail') {
+                const qty = parseInt(document.getElementById(`qty-val-${id}`).value) || 0;
                 retailTotal += (p * qty);
-            } else if(t === 'single') {
-                fixed += p;
-            }
+            } else if(t === 'single') fixed += p;
         });
 
         const cFinal = Math.floor(customOrig * 0.1);
         const total = fixed + retailTotal + cFinal;
-        
         document.getElementById('total-calc-hint').style.display = 'block';
         document.getElementById('total-calc-hint').innerHTML = `
             ${fixed > 0 ? `服務項目：$${fixed}<br>` : ''}
             ${retailTotal > 0 ? `零售小計：$${retailTotal}<br>` : ''}
             ${cFinal > 0 ? `委託10%：$${cFinal}<br>` : ''}
-            -------------------<br>
-            總金額：<b>$${total}</b>`;
+            -------------------<br>總金額：<b>$${total}</b>`;
         document.getElementById('pPrice').value = total;
     }
 
@@ -430,22 +376,15 @@
         const dateStr = (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
         const timeStr = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0');
         const dayRef = db.ref('order_counters/' + dateStr);
-        const snapshot = await dayRef.transaction(currentCount => {
-            return (currentCount || 0) + 1;
-        });
-        const seq = snapshot.snapshot.val().toString().padStart(2, '0');
-        return `${dateStr}${timeStr}${seq}`;
+        const snapshot = await dayRef.transaction(c => (c || 0) + 1);
+        return `${dateStr}${timeStr}${snapshot.snapshot.val().toString().padStart(2, '0')}`;
     }
 
     async function sendOrder() {
         if (!userData) return alert("請先登入 Discord 帳號");
-        const cid = document.getElementById('pCat').value, finalP = document.getElementById('pPrice').value;
-        const sel = document.querySelectorAll('input[name="si"]:checked');
+        const cid = document.getElementById('pCat').value, finalP = document.getElementById('pPrice').value, sel = document.querySelectorAll('input[name="si"]:checked');
         if (!cid || !sel.length) return alert("請勾選預定項目");
-
-        const btn = document.getElementById('submit-btn');
-        btn.disabled = true;
-        btn.innerText = "處理中...";
+        const btn = document.getElementById('submit-btn'); btn.disabled = true; btn.innerText = "處理中...";
 
         try {
             const orderNo = await generateOrderNo();
@@ -453,15 +392,9 @@
             sel.forEach(el => {
                 const t = el.getAttribute('data-type'), id = el.getAttribute('data-id'), p = parseFloat(el.getAttribute('data-p')) || 0;
                 let info = el.value;
-                if(t==='custom') {
-                    let v = document.querySelector(`#box-${id} input`).value || 0;
-                    info += ` (原價$${v}/抽成$${Math.floor(v*0.1)})`;
-                } else if(t==='retail') {
-                    const qty = document.getElementById(`qty-val-${id}`).innerText;
-                    info += ` x${qty} ($${p*qty})`;
-                } else {
-                    info += ` ($${p})`;
-                }
+                if(t==='custom') { let v = document.querySelector(`#box-${id} input`).value || 0; info += ` (原價$${v}/抽成$${Math.floor(v*0.1)})`; }
+                else if(t==='retail') { let qty = document.getElementById(`qty-val-${id}`).value; info += ` x${qty} ($${p*qty})`; }
+                else info += ` ($${p})`;
                 details.push(info);
             });
 
@@ -470,35 +403,25 @@
                 body: JSON.stringify({
                     username: "翔毅車業預定系統",
                     embeds: [{
-                        title: `🆕 新預定單 #${orderNo}`,
-                        color: 16751104,
+                        title: `🆕 新預定單 #${orderNo}`, color: 16751104,
                         fields: [
                             { name: "👤 顧客名稱", value: `<@${userData.id}>`, inline: true },
                             { name: "🆔 Discord ID", value: `\`${userData.id}\``, inline: true },
                             { name: "💰 預定總額", value: `**$${finalP}**`, inline: true },
                             { name: "📋 預定項目明細", value: "```" + details.join("\n") + "```" },
                             { name: "⏰ 下單時間", value: new Date().toLocaleString('zh-TW'), inline: false }
-                        ],
-                        footer: { text: "翔毅車業 · 預訂系統" }
+                        ], footer: { text: "翔毅車業 · 預訂系統" }
                     }]
                 })
             });
-            alert(`預定成功！\n您的訂單編號為：${orderNo}`);
-            location.reload();
-        } catch (e) {
-            alert("送出失敗，請檢查該分類的 Webhook 網址是否正確");
-            btn.disabled = false;
-            btn.innerText = "送出預定";
-        }
+            alert(`預定成功！\n您的訂單編號為：${orderNo}`); location.reload();
+        } catch (e) { alert("送出失敗，請檢查該分類的 Webhook 網址是否正確"); btn.disabled = false; btn.innerText = "送出預定"; }
     }
 
     function setPriceMode(m) {
         currentMode = m;
-        document.getElementById('modeSingle').classList.toggle('active', m==='single');
-        document.getElementById('modeRetail').classList.toggle('active', m==='retail');
-        document.getElementById('modeRange').classList.toggle('active', m==='range');
-        document.getElementById('modeCustom').classList.toggle('active', m==='custom');
-        
+        ['modeSingle','modeRetail','modeRange','modeCustom'].forEach(id => document.getElementById(id).classList.remove('active'));
+        document.getElementById('mode' + m.charAt(0).toUpperCase() + m.slice(1)).classList.add('active');
         document.getElementById('inputSingle').style.display = (m==='single' || m==='retail') ? 'block' : 'none';
         document.getElementById('inputRange').style.display = m==='range' ? 'flex' : 'none';
     }
@@ -511,28 +434,17 @@
     }
     function addCat() {
         const n = document.getElementById('nCatName').value, w = document.getElementById('nCatWeb').value;
-        if(n && w) {
-            db.ref('xiangyi_shop').push({ name: n, webhook: w });
-            document.getElementById('nCatName').value = ''; document.getElementById('nCatWeb').value = '';
-        }
+        if(n && w) { db.ref('xiangyi_shop').push({ name: n, webhook: w }); document.getElementById('nCatName').value = ''; document.getElementById('nCatWeb').value = ''; }
     }
     function addItem() {
         const id = document.getElementById('aCatSelect').value, n = document.getElementById('nItemName').value;
         if(!id || !n) return alert('請完整填寫項目資訊');
-        
         let maxOrder = -1;
-        if(storeData[id].items) {
-            Object.values(storeData[id].items).forEach(item => {
-                if(item.order > maxOrder) maxOrder = item.order;
-            });
-        }
-
+        if(storeData[id].items) Object.values(storeData[id].items).forEach(item => { if(item.order > maxOrder) maxOrder = item.order; });
         let d = { name: n, type: currentMode, order: maxOrder + 1 };
         if(currentMode==='single' || currentMode==='retail') d.price = document.getElementById('nItemPrice').value;
         else if(currentMode==='range') { d.min=document.getElementById('nPriceMin').value; d.max=document.getElementById('nPriceMax').value; }
-        
-        db.ref(`xiangyi_shop/${id}/items`).push(d);
-        document.getElementById('nItemName').value = '';
+        db.ref(`xiangyi_shop/${id}/items`).push(d); document.getElementById('nItemName').value = '';
     }
 </script>
 </body>
