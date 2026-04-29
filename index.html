@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業訂購/販售系統 v4.2</title>
+    <title>翔毅車業訂單系統 v4.3</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -19,6 +19,10 @@
 
         label { display: block; margin-top: 15px; color: #aaa; font-size: 13px; font-weight: bold; }
         input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #444; box-sizing: border-box; background: #2a2a2a; color: white; outline: none; }
+        
+        /* 唯讀輸入框樣式 - 鎖定感 */
+        input[readonly] { background: #1a1a1a !important; color: var(--accent); border: 1px dashed #555; cursor: not-allowed; font-weight: bold; font-size: 18px; }
+
         .btn-send { background: var(--accent); color: black; font-weight: bold; border: none; font-size: 16px; margin-top: 20px; cursor: pointer; }
 
         .checkbox-group { background: #2a2a2a; border-radius: 8px; padding: 5px; max-height: 350px; overflow-y: auto; border: 1px solid #444; margin-top: 8px; }
@@ -27,12 +31,10 @@
         .item-main input[type="checkbox"] { width: auto; margin-right: 12px; }
         .price-tag { color: var(--accent); font-size: 12px; margin-left: auto; font-weight: bold; }
         
-        /* 零售數量控制區 - 更新為含輸入框的樣式 */
         .qty-control { display: none; align-items: center; gap: 8px; margin-top: 10px; padding: 8px; background: #1a1a1a; border-radius: 6px; }
         .qty-btn { width: 36px; height: 36px; padding: 0; background: #444; border: none; color: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
         .qty-btn:hover { background: #555; }
         .qty-input { width: 60px !important; height: 36px !important; text-align: center; margin: 0 !important; padding: 0 !important; font-size: 16px; font-weight: bold; color: var(--accent); background: #222 !important; border: 1px solid #444 !important; }
-        /* 隱藏 Chrome/Safari 數字箭頭 */
         .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
         .custom-price-input { margin-top: 10px; padding: 10px; background: #1a1a1a; border-left: 3px solid var(--accent); display: none; }
@@ -40,7 +42,7 @@
         .calc-hint { color: #fff; font-size: 13px; margin-top: 15px; background: rgba(255,153,0,0.08); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,153,0,0.2); line-height: 1.8; display: none; }
         .calc-hint b { color: var(--accent); font-size: 20px; }
 
-        /* 管理者樣式 */
+        /* 管理者區域樣式 */
         .admin-section { display: none; border-top: 2px dashed #444; margin-top: 30px; padding-top: 20px; }
         .cat-card { background: #1a1a1a; border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
         .cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px; }
@@ -48,7 +50,6 @@
         .item-row { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 10px 12px; border-radius: 8px; margin-top: 8px; font-size: 13px; border: 1px solid #444; cursor: default; }
         .item-row.sortable-ghost { opacity: 0.4; background: var(--main); }
         .drag-handle { cursor: grab; color: #666; margin-right: 10px; font-size: 18px; user-select: none; }
-        .drag-handle:active { cursor: grabbing; }
         
         .item-info { flex: 1; display: flex; align-items: center; }
         .admin-btns { display: flex; gap: 8px; }
@@ -79,7 +80,7 @@
 </div>
 
 <div class="card">
-    <h2>🏎️ 翔毅車業預定系統</h2>
+    <h2>🏎️ 翔毅車業訂單系統</h2>
 
     <div id="player-view">
         <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號驗證</button>
@@ -101,8 +102,9 @@
         
         <div id="calc-section" style="display:none;">
             <div id="total-calc-hint" class="calc-hint"></div>
-            <label>3. 最終預定總金額</label>
-            <input type="number" id="pPrice" placeholder="系統試算結果">
+            <label>3. 最終預定總金額 (由系統自動計算)</label>
+            <!-- 這裡使用了 readonly，確保顧客無法手動更改金額 -->
+            <input type="text" id="pPrice" readonly placeholder="請勾選項目以試算金額">
         </div>
         
         <button class="btn-send" id="submit-btn" onclick="sendOrder()">送出預定</button>
@@ -118,6 +120,7 @@
     </div>
 
     <div id="admin-view" class="admin-section">
+        <!-- 管理介面保持不變 -->
         <div class="cat-card">
             <h4>1. 分類管理</h4>
             <input type="text" id="nCatName" placeholder="分類名稱">
@@ -303,7 +306,6 @@
                 if(it.type==='custom') {
                     extraUI = `<div class="custom-price-input" id="box-${it.id}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>`;
                 } else if(it.type==='retail') {
-                    // 更新數量控制區：改為輸入框
                     extraUI = `
                         <div class="qty-control" id="qty-box-${it.id}">
                             <span style="font-size:12px; color:#888">數量：</span>
@@ -349,7 +351,11 @@
     function recalc() {
         let fixed = 0, customOrig = 0, retailTotal = 0;
         const sel = document.querySelectorAll('input[name="si"]:checked');
-        if(!sel.length) { document.getElementById('total-calc-hint').style.display = 'none'; document.getElementById('pPrice').value=''; return; }
+        if(!sel.length) { 
+            document.getElementById('total-calc-hint').style.display = 'none'; 
+            document.getElementById('pPrice').value=''; 
+            return; 
+        }
         
         sel.forEach(el => {
             const t = el.getAttribute('data-type'), id = el.getAttribute('data-id'), p = parseFloat(el.getAttribute('data-p')) || 0;
@@ -401,7 +407,7 @@
             await fetch(storeData[cid].webhook, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    username: "翔毅車業預定系統",
+                    username: "翔毅車業訂單系統",
                     embeds: [{
                         title: `🆕 新預定單 #${orderNo}`, color: 16751104,
                         fields: [
