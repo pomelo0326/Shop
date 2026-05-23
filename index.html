@@ -673,6 +673,39 @@
         });
     }
 
+    // 取消未接訂單：員工可在待接大廳直接取消，並同步更新 Discord Webhook 訊息
+    async function cancelOrder(id) {
+        let order = ordersData[id];
+        if (!order) return showToast("訂單不存在", "error");
+        if (order.status !== 'pending') return showToast("此訂單已被接取，無法取消", "error");
+
+        showCustomConfirm("取消此訂單？", "此操作會將訂單從待接清單移除，並同步標記 Discord 訊息為已取消。", async () => {
+            try {
+                if (order.webhookUrl && order.messageId && order.embedData) {
+                    let cancelEmbed = JSON.parse(JSON.stringify(order.embedData));
+                    cancelEmbed.color = 15158332;
+
+                    if (cancelEmbed.fields && cancelEmbed.fields.length >= 4) {
+                        cancelEmbed.fields[3].name = "🔴 處理狀態";
+                        cancelEmbed.fields[3].value = "此訂單已取消";
+                    }
+
+                    await fetch(`${order.webhookUrl}/messages/${order.messageId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ embeds: [cancelEmbed] })
+                    });
+                }
+
+                await db.ref(`orders/${id}`).remove();
+                showToast("訂單已取消", "success");
+            } catch (e) {
+                console.error(e);
+                showToast("取消失敗，請稍後再試", "error");
+            }
+        });
+    }
+
     function paySalaries() {
         let ws = getWeekStartTimestamp(), btn = document.getElementById('btn-pay-salary'), amt = parseInt(btn.dataset.amount)||0;
         if(amt<=0) return showToast("本週無薪資", "info");
@@ -683,7 +716,6 @@
     }
 
     // 員工核心功能
-    // 員工接單：全額入帳至公款，分成金額僅做紀錄
     async function acceptOrder(orderId) {
         let order = ordersData[orderId];
         if (order.status !== 'pending') return showToast("手速太慢，訂單已被接走！", "error");
@@ -692,136 +724,25 @@
         if (!perm || !perm.canAccept) return showToast(`【${role}】無權限接取此類別`, "error");
 
         let comm = Math.floor(order.price * (parseInt(perm.pct)||0) / 100);
-        
-        // 1. 更新訂單狀態與分成 (分成不在此時扣除)
-        await db.ref(`orders/${orderId}`).update({ 
-            status:'accepted', 
-            acceptedBy:currentEmpId, 
-            commission:comm, 
-            acceptedAt:Date.now() 
-        });
+        await db.ref(`orders/${orderId}`).update({ status:'accepted', acceptedBy:currentEmpId, commission:comm, acceptedAt:Date.now() });
 
-        // 2. 自動累加【全額】至公款餘額
-        let currentBalance = fundsData.balance || 0;
-        await db.ref('funds/balance').set(currentBalance + order.price);
-
-        // 3. 更新 Discord Webhook (顯示全額入帳)
         if (order.webhookUrl && order.messageId && order.embedData) {
             let nE = order.embedData; nE.color = 3066993;
-            if(nE.fields.length >= 4) { 
-                nE.fields[3].name = "🟢 處理狀態"; 
-                nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接單 (全額入帳: $${order.price})`; 
-            }
+            if(nE.fields.length >= 4) { nE.fields[3].name = "🟢 處理狀態"; nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接單`; }
             fetch(`${order.webhookUrl}/messages/${order.messageId}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({embeds:[nE]}) });
         }
-        showToast("✅ 接單成功！全額已記入公款", "success");
+        showToast("✅ 接單成功！業績已記入", "success");
     }
 
-    // 道路救援：全額入帳至公款
     async function submitRoadside() {
         let locP = parseInt(document.getElementById('rs-plan').value), isD = document.getElementById('rs-danger').checked;
-        let finalP = locP + (isD ? 150000 : 0);
-        let comm = Math.floor(finalP * 0.9); // 紀錄分成 90%
-
+        let finalP = locP + (isD ? 150000 : 0), comm = Math.floor(finalP * 0.9);
         await db.ref('orders').push({
             orderNo: "RS" + await generateOrderNo(), timestamp: Date.now(), price: finalP,
             status: 'accepted', acceptedBy: currentEmpId, commission: comm, type: 'roadside', details: ["道路救援出勤"]
         });
-
-        // 自動累加【全額】至公款餘額
-        let currentBalance = fundsData.balance || 0;
-        await db.ref('funds/balance').set(currentBalance + finalP);
-
-        showToast("救援紀錄已送出，全額已記入公款", "success");
+        showToast("救援紀錄已送出", "success");
     }
-
-    // --- 單人薪資管理邏輯 (請直接貼入您的 <script> 區塊中) ---
-
-// 1. 結清指定員工的薪資
-async function settleEmployeeSalary(empId) {
-    if (!confirm(`確定要結清 ${empData[empId]?.nickname || '該員工'} 本週薪資嗎？`)) return;
-
-    let totalComm = 0;
-    for (let id in ordersData) {
-        if (ordersData[id].acceptedBy === empId && ordersData[id].status === 'accepted' && !ordersData[id].isPaid) {
-            totalComm += (ordersData[id].commission || 0);
-        }
-    }
-
-    if (totalComm <= 0) return showToast("該員工目前無待發薪資", "warning");
-
-    let newBalance = (fundsData.balance || 0) - totalComm;
-    await db.ref('funds/balance').set(newBalance);
-
-    let updates = {};
-    for (let id in ordersData) {
-        if (ordersData[id].acceptedBy === empId && ordersData[id].status === 'accepted' && !ordersData[id].isPaid) {
-            updates[`orders/${id}/isPaid`] = true;
-        }
-    }
-    await db.ref().update(updates);
-    showToast(`✅ 已結清薪資 ($${totalComm})`, "success");
-    updatePayrollUI(); // 更新介面
-}
-
-// 2. 取消結清
-async function cancelEmployeeSettlement(empId) {
-    if (!confirm(`確定要取消 ${empData[empId]?.nickname || '該員工'} 本週的薪資結清記錄嗎？`)) return;
-
-    let restoredComm = 0;
-    let updates = {};
-
-    for (let id in ordersData) {
-        if (ordersData[id].acceptedBy === empId && ordersData[id].isPaid === true) {
-            restoredComm += (ordersData[id].commission || 0);
-            updates[`orders/${id}/isPaid`] = null;
-        }
-    }
-
-    if (restoredComm === 0) return showToast("找不到該員工的已結清紀錄", "warning");
-
-    let newBalance = (fundsData.balance || 0) + restoredComm;
-    await db.ref('funds/balance').set(newBalance);
-    await db.ref().update(updates);
-
-    showToast(`⚠️ 已取消結清，公款已補回 $${restoredComm}`, "warning");
-    updatePayrollUI(); // 更新介面
-}
-
-// 3. 更新財務頁面的薪資列表 (請將此函式放進您的自動更新循環中)
-function updatePayrollUI() {
-    let payrollDiv = document.getElementById('payroll-list');
-    if (!payrollDiv) return;
-    payrollDiv.innerHTML = ""; 
-
-    for (let empId in empData) {
-        let totalUnpaid = 0;
-        let totalPaid = 0;
-
-        for (let orderId in ordersData) {
-            let order = ordersData[orderId];
-            if (order.acceptedBy === empId && order.status === 'accepted') {
-                if (!order.isPaid) totalUnpaid += (order.commission || 0);
-                else totalPaid += (order.commission || 0);
-            }
-        }
-
-        if (totalUnpaid > 0 || totalPaid > 0) {
-            payrollDiv.innerHTML += `
-                <div style="padding:10px; border-bottom:1px solid #333; margin-bottom:5px;">
-                    <div style="display:flex; justify-content:space-between;">
-                        <span>${empData[empId].nickname}</span>
-                        <span>待發: <strong style="color:#2ecc71">$${totalUnpaid}</strong> | 已發: <strong style="color:#777">$${totalPaid}</strong></span>
-                    </div>
-                    <div style="margin-top:5px; display:flex; gap:5px;">
-                        ${totalUnpaid > 0 ? `<button onclick="settleEmployeeSalary('${empId}')" style="background:#2ecc71; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; flex:1;">結清</button>` : ''}
-                        ${totalPaid > 0 ? `<button onclick="cancelEmployeeSettlement('${empId}')" style="background:#e74c3c; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; flex:1;">取消</button>` : ''}
-                    </div>
-                </div>
-            `;
-        }
-    }
-}
 
     // 系統運算大核心
     function refreshAllCalculations() {
@@ -840,6 +761,7 @@ function updatePayrollUI() {
                             <div style="font-size:13px; color:#ddd;">總金額: <b style="color:var(--accent)">$${o.price}</b></div>
                             <div style="font-size:11px; color:#888;">${new Date(o.timestamp).toLocaleString()}</div>
                             <button onclick="acceptOrder('${o.id}')" style="background:#5865F2; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer;">立即接單</button>
+                            <button onclick="cancelOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">取消訂單</button>
                           </div>`;
             }
         });
