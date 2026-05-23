@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v4.5</title>
+    <title>翔毅車業預定系統 v5.0</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -42,7 +42,6 @@
         .calc-hint { color: #fff; font-size: 13px; margin-top: 15px; background: rgba(255,153,0,0.08); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,153,0,0.2); line-height: 1.8; display: none; }
         .calc-hint b { color: var(--accent); font-size: 20px; }
 
-        /* 管理者區域 */
         .admin-section { display: none; border-top: 2px dashed #444; margin-top: 30px; padding-top: 20px; }
         .cat-card { background: #1a1a1a; border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
         .cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 8px; }
@@ -53,56 +52,44 @@
         
         .item-info { flex: 1; display: flex; align-items: center; }
         .admin-btns { display: flex; gap: 8px; }
-        .del-btn { width: auto; background: #e74c3c; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
-        .edit-btn { width: auto; background: #3498db; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; }
+        .del-btn { width: auto; background: #e74c3c; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; border-radius:4px; }
+        .edit-btn { width: auto; background: #3498db; padding: 6px 12px; font-size: 11px; cursor: pointer; border: none; margin: 0; color: white; border-radius:4px; }
         .webhook-btn { width: auto; background: #9b59b6; padding: 4px 8px; font-size: 10px; cursor: pointer; border: none; margin: 0; color: white; border-radius: 4px; }
         
         .mode-toggle { display: flex; gap: 4px; margin-bottom: 10px; }
         .mode-toggle button { flex: 1; font-size: 11px; padding: 8px; background: #444; border: none; cursor: pointer; margin: 0; }
         .mode-toggle button.active { background: var(--accent); color: black; font-weight: bold; }
 
-        /* 自定義彈窗 */
         #custom-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2a2a2a; padding: 20px; border-radius: 10px; border: 2px solid var(--accent); z-index: 1000; box-shadow: 0 0 20px rgba(0,0,0,0.8); width: 85%; max-width: 320px; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; }
 
-        /* 營業統計專屬樣式 */
         .stat-section { border: 1px solid #444; background: #111; padding: 15px; border-radius: 10px; margin-top: 5px; }
         .stat-box { background: #1a1a1a; padding: 12px; border-radius: 8px; margin-top: 8px; border: 1px dashed var(--accent); font-size: 15px; line-height: 1.6; }
         .stat-history { background: #222; padding: 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; border-left: 3px solid #555; }
         
-        /* 後台頂部導覽列樣式 */
-        .admin-nav { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 15px; }
-        .admin-nav button { flex: 1; margin: 0; padding: 10px; font-size: 12px; font-weight: bold; transition: 0.2s; }
+        .admin-nav { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 15px; flex-wrap: wrap; }
+        .admin-nav button { flex: 1; margin: 0; padding: 8px; font-size: 11px; font-weight: bold; transition: 0.2s; min-width: 30%; border-radius:6px; border:1px solid #444; }
 
-        /* 僅新增：員工帳號列表樣式 */
         .emp-list-item { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 10px 12px; border-radius: 8px; margin-top: 8px; font-size: 13px; border: 1px solid #444; }
-        .emp-list-info { display: flex; flex-direction: column; gap: 3px; }
+        .emp-list-info { display: flex; flex-direction: column; gap: 3px; width:65%; }
 
-        /* 吐司訊息通知（Toast）動畫 */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translate(-50%, -10px); }
-            to { opacity: 1; transform: translate(-50%, 0); }
-        }
-        @keyframes fadeOut {
-            from { opacity: 1; transform: translate(-50%, 0); }
-            to { opacity: 0; transform: translate(-50%, -10px); }
-        }
+        @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+        @keyframes fadeOut { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -10px); } }
     </style>
 </head>
 <body>
 
 <div class="modal-overlay" id="modal-overlay"></div>
 <div id="custom-modal">
-    <h4 id="modal-title" style="margin-top:0; color: var(--accent);">修改資訊</h4>
-    <p id="modal-item-name" style="font-size:12px; color:#aaa; margin-bottom: 15px;"></p>
+    <h4 id="modal-title" style="margin-top:0; color: var(--accent);">提示</h4>
+    <p id="modal-item-name" style="font-size:12px; color:#aaa; margin-bottom: 15px; line-height:1.5;"></p>
     <div id="modal-input-area"></div>
     <div style="display:flex; gap:10px; margin-top:20px;">
-        <button id="modal-confirm" style="background:var(--accent); color:black; margin:0; font-weight:bold;">儲存</button>
+        <button id="modal-confirm" style="background:var(--accent); color:black; margin:0; font-weight:bold;">確認</button>
         <button onclick="closeModal()" style="background:#555; margin:0">取消</button>
     </div>
 </div>
 
-<!-- 吐司訊息容器 -->
 <div id="toast-container" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
 
 <div class="card">
@@ -110,7 +97,7 @@
 
     <!-- 前台預定介面 -->
     <div id="player-view">
-        <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號验证</button>
+        <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號驗證</button>
         
         <div id="user-display" class="user-box">
             <img id="user-avatar" src="" alt="">
@@ -136,50 +123,61 @@
         
         <button class="btn-send" id="submit-btn" onclick="sendOrder()">送出預定</button>
 
-        <!-- 管理與員工後台入口分開 -->
+        <!-- 管理入口 -->
         <div style="display: flex; justify-content: center; gap: 20px; margin-top:40px;">
-            <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin: 0;" onclick="showLogin()">⚙️ 老闆後台管理</p>
-            <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin: 0;" onclick="showEmpLogin()">⚙️ 員工後台登入</p>
+            <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin: 0;" onclick="showLogin()">⚙️ 老闆後台</p>
+            <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin: 0;" onclick="showEmpLogin()">⚙️ 員工專區</p>
         </div>
     </div>
 
-    <!-- 老闆後台登入頁面 -->
+    <!-- 老闆登入 -->
     <div id="login-view" style="display:none;">
-        <h3>老闆後台登入</h3>
+        <h3>👑 老闆後台登入</h3>
         <input type="text" id="aUser" placeholder="老闆帳號">
         <input type="password" id="aPass" placeholder="老闆密碼">
-        <button onclick="authAdmin()">登入</button>
+        <button onclick="authAdmin()" style="background:var(--accent); color:black; font-weight:bold;">登入</button>
         <button style="background:#444;" onclick="location.reload()">返回</button>
     </div>
 
-    <!-- 員工後台登入頁面 -->
+    <!-- 員工登入 -->
     <div id="emp-login-view" style="display:none;">
-        <h3>員工後台登入</h3>
+        <h3>🛠️ 員工專屬登入</h3>
         <input type="text" id="eUser" placeholder="員工帳號">
         <input type="password" id="ePass" placeholder="員工密碼">
-        <button onclick="authEmployee()">登入</button>
+        <button onclick="authEmployee()" style="background:var(--accent); color:black; font-weight:bold;">登入</button>
         <button style="background:#444;" onclick="location.reload()">返回</button>
     </div>
 
-    <!-- 後台管理主介面 -->
+    <!-- 系統後台主介面 (包含老闆與員工分頁) -->
     <div id="admin-view" class="admin-section">
-        <!-- 後台分頁導航列 -->
-        <div class="admin-nav">
-            <button id="nav-btn-manage" onclick="switchAdminPage('manage')" style="background: var(--accent); color: black;">預定系統管理</button>
-            <button id="nav-btn-stats" onclick="switchAdminPage('stats')" style="background: #2a2a2a; color: white;">營業統計管理</button>
-            <button id="nav-btn-employees" onclick="switchAdminPage('employees')" style="background: #2a2a2a; color: white;">員工帳號管理</button>
+        
+        <!-- 老闆專屬導覽列 -->
+        <div class="admin-nav" id="nav-boss" style="display:none;">
+            <button id="nav-btn-manage" onclick="switchPage('manage')">項目管理</button>
+            <button id="nav-btn-stats" onclick="switchPage('stats')">系統營收</button>
+            <button id="nav-btn-employees" onclick="switchPage('employees')">員工建檔</button>
+            <button id="nav-btn-roles" onclick="switchPage('roles')">職位權限</button>
+            <button id="nav-btn-finance" onclick="switchPage('finance')">收支發薪</button>
+            <button id="nav-btn-history" onclick="switchPage('history')">歷史訂單</button>
         </div>
 
-        <!-- 原有後台管理頁面 -->
-        <div id="admin-page-manage">
+        <!-- 員工專屬導覽列 -->
+        <div class="admin-nav" id="nav-emp" style="display:none;">
+            <button id="nav-btn-emp-pending" onclick="switchPage('emp-pending')">未接訂單</button>
+            <button id="nav-btn-emp-stats" onclick="switchPage('emp-stats')">我的業績</button>
+            <button id="nav-btn-emp-roadside" onclick="switchPage('emp-roadside')">道路救援</button>
+        </div>
+
+        <!-- 1. 老闆 - 預定系統管理 -->
+        <div id="admin-page-manage" style="display:none;">
             <div class="cat-card">
-                <h4>1. 分類管理</h4>
+                <h4>建立分類</h4>
                 <input type="text" id="nCatName" placeholder="分類名稱">
-                <input type="text" id="nCatWeb" placeholder="Webhook 網址">
-                <button onclick="addCat()">新增分類</button>
+                <input type="text" id="nCatWeb" placeholder="Discord Webhook 網址">
+                <button onclick="addCat()" style="background:var(--accent); color:black;">新增分類</button>
             </div>
             <div class="cat-card">
-                <h4>2. 項目管理</h4>
+                <h4>建立項目</h4>
                 <select id="aCatSelect"></select>
                 <input type="text" id="nItemName" placeholder="項目名稱">
                 <div class="mode-toggle">
@@ -189,46 +187,140 @@
                     <button id="modeCustom" onclick="setPriceMode('custom')">自填10%</button>
                 </div>
                 <div id="inputSingle"><input type="number" id="nItemPrice" placeholder="單價"></div>
-                <div id="inputRetailExtra" style="display:none;"><input type="number" id="nItemMax" placeholder="數量上限 (例如：10)"></div>
+                <div id="inputRetailExtra" style="display:none;"><input type="number" id="nItemMax" placeholder="數量上限 (可留空)"></div>
                 <div id="inputRange" style="display:none; display:flex; gap:5px;"><input type="number" id="nPriceMin" placeholder="最低">~<input type="number" id="nPriceMax" placeholder="最高"></div>
                 <button onclick="addItem()" style="margin-top:10px">確認上架</button>
             </div>
             <div id="admin-list-container"></div>
         </div>
 
-        <!-- 營業統計專屬獨立頁面 -->
-        <div id="admin-page-stats" style="display: none;">
+        <!-- 2. 老闆 - 營業統計概覽 -->
+        <div id="admin-page-stats" style="display:none;">
             <div class="stat-section">
-                <h4 style="margin:0; color:var(--accent);">📈 營業統計管理</h4>
+                <h4 style="margin:0; color:var(--accent);">📈 系統總營運 (本週)</h4>
                 <div class="stat-box">
-                    <div style="font-weight:bold; color:#fff; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">本週數據輪迴 (週六 00:00 ~ 週五 23:59)</div>
-                    <div>下單總次數：<span id="stat-count" style="color:var(--accent); font-weight:bold;">0</span> 次</div>
-                    <div>總營業金額：<span id="stat-amount" style="color:#2ecc71; font-weight:bold;">$0</span></div>
+                    <div style="font-weight:bold; color:#fff; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">計算週期: 週六 00:00 ~ 週五 23:59</div>
+                    <div>成功接單總數：<span id="stat-count" style="color:var(--accent); font-weight:bold;">0</span> 次</div>
+                    <div>系統總營業額：<span id="stat-amount" style="color:#2ecc71; font-weight:bold;">$0</span></div>
+                    <p style="font-size:11px; color:#888; margin-top:5px;">* 僅計算「已接單」與「道路救援」之營業額</p>
                 </div>
-                <h5 style="margin:15px 0 5px 0; color:#aaa;">上一個時段紀錄 (保留3天查看)：</h5>
-                <div id="stat-history-list"></div>
             </div>
         </div>
 
-        <!-- 員工帳號管理專屬獨立頁面 -->
-        <div id="admin-page-employees" style="display: none;">
+        <!-- 3. 老闆 - 員工帳號管理 -->
+        <div id="admin-page-employees" style="display:none;">
             <div class="cat-card">
-                <h4 style="margin-top:0; color:var(--accent);">新增員工帳號</h4>
-                <input type="text" id="new-emp-user" placeholder="員工帳號 (登入用帳號)">
-                <input type="password" id="new-emp-pass" placeholder="員工密碼">
+                <h4 style="margin-top:0; color:var(--accent);">新增員工</h4>
+                <input type="text" id="new-emp-user" placeholder="登入帳號">
+                <input type="password" id="new-emp-pass" placeholder="登入密碼">
                 <input type="text" id="new-emp-nick" placeholder="員工暱稱 (顯示用)">
-                <button onclick="addEmployee()" style="background:var(--accent); color:black; font-weight:bold; margin-top:10px;">新增員工</button>
+                <label>選擇職位</label>
+                <select id="new-emp-role"></select>
+                <button onclick="addEmployee()" style="background:var(--accent); color:black; font-weight:bold; margin-top:10px;">新增入檔</button>
             </div>
             <div class="cat-card">
-                <h4 style="margin-top:0;">現有員工清單</h4>
-                <div id="admin-emp-list-container">
-                    <p style="color:#666; font-size:12px; text-align:center; padding:10px;">載入中...</p>
+                <h4 style="margin-top:0;">現有員工</h4>
+                <div id="admin-emp-list-container"><p style="color:#666; font-size:12px; text-align:center;">載入中...</p></div>
+            </div>
+        </div>
+
+        <!-- 4. 老闆 - 職位權限設定 -->
+        <div id="admin-page-roles" style="display:none;">
+            <div class="cat-card">
+                <h4 style="margin-top:0; color:var(--accent);">🛡️ 職位接單權限與分成</h4>
+                <select id="role-select" onchange="loadRolePerms()"></select>
+                <div id="role-perms-container" style="margin-top:15px; border-top:1px dashed #444; padding-top:15px;"></div>
+                <button onclick="saveRolePerms()" style="background:var(--accent); color:black; margin-top:15px; font-weight:bold;">儲存權限</button>
+            </div>
+        </div>
+
+        <!-- 5. 老闆 - 收支發薪管理 -->
+        <div id="admin-page-finance" style="display:none;">
+            <div class="stat-section">
+                <h4 style="color:var(--accent); margin-top:0;">💰 財務大廳</h4>
+                <div class="stat-box">
+                    <div>本週總收入：<span id="finance-weekly-income" style="color:#2ecc71; font-weight:bold;">$0</span></div>
+                    <div style="margin-top:10px; border-top:1px dashed #444; padding-top:10px;">
+                        公款餘額：<span id="finance-balance" style="color:var(--accent); font-weight:bold; font-size:18px;">$0</span>
+                        <button onclick="editBalance()" style="width:auto; padding:4px 8px; font-size:11px; margin-left:10px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;">更正餘額</button>
+                    </div>
+                </div>
+                
+                <div style="margin-top:15px;">
+                    <h5 style="color:#fff; margin-bottom:8px;">支出登記</h5>
+                    <div style="display:flex; gap:5px;">
+                        <input type="text" id="expense-reason" placeholder="事由" style="flex:2; margin:0;">
+                        <input type="number" id="expense-amount" placeholder="金額" style="flex:1; margin:0;">
+                        <button onclick="addExpense()" style="margin:0; width:auto; background:#3498db; border:none; color:white; border-radius:4px; padding:0 12px; cursor:pointer;">扣除</button>
+                    </div>
+                    <div id="expense-list" style="margin-top:10px; font-size:12px; max-height:100px; overflow-y:auto; border:1px solid #333; padding:5px; border-radius:4px;"></div>
+                </div>
+
+                <div class="stat-box" style="margin-top:15px; border-color:#e74c3c;">
+                    <h5 style="margin:0 0 10px 0; color:#e74c3c;">💸 本週應發薪資 (自動結算)</h5>
+                    <div id="payroll-list" style="font-size:13px; line-height:1.8;"></div>
+                    <button id="btn-pay-salary" onclick="paySalaries()" style="background:#e74c3c; color:white; margin-top:15px; width:100%; padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">從公款餘額結清薪資</button>
                 </div>
             </div>
         </div>
+
+        <!-- 6. 老闆 - 歷史訂單 -->
+        <div id="admin-page-history" style="display:none;">
+            <div class="stat-section">
+                <h4 style="color:var(--accent); margin-top:0;">📜 歷史訂單 (72H內)</h4>
+                <p style="font-size:11px; color:#aaa; margin-top:0;">* 若刪除「已接單」項目，本週收入與員工薪資將自動扣回。</p>
+                <div id="history-list" style="max-height:400px; overflow-y:auto; padding-right:5px;"></div>
+            </div>
+        </div>
+
+        <!-- EMP 1. 員工 - 待接取訂單 -->
+        <div id="admin-page-emp-pending" style="display:none;">
+            <div class="stat-section" style="border-color:var(--accent);">
+                <h4 style="color:var(--accent); margin-top:0;">🔔 大廳待接訂單</h4>
+                <div id="emp-pending-list" style="max-height:450px; overflow-y:auto;"></div>
+            </div>
+        </div>
+
+        <!-- EMP 2. 員工 - 我的業績 -->
+        <div id="admin-page-emp-stats" style="display:none;">
+            <div class="stat-section">
+                <h4 style="color:var(--accent); margin-top:0;">📊 本週業績與分成</h4>
+                <div class="stat-box">
+                    <div>接單次數：<span id="emp-my-count" style="color:var(--accent); font-weight:bold;">0</span> 次</div>
+                    <div>經手營業額：<span id="emp-my-amount" style="color:#2ecc71; font-weight:bold;">$0</span></div>
+                    <div style="margin-top:10px; border-top:1px dashed #444; padding-top:10px;">
+                        累積應得分成：<span id="emp-my-commission" style="color:var(--accent); font-weight:bold; font-size:18px;">$0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EMP 3. 員工 - 道路救援 -->
+        <div id="admin-page-emp-roadside" style="display:none;">
+            <div class="cat-card" style="border-color:#e74c3c;">
+                <h4 style="color:#e74c3c; margin-top:0;">🚨 道路救援即時回報</h4>
+                <label>選擇出勤方案</label>
+                <select id="rs-plan">
+                    <option value="100000">親自到店維修 ($100,000)</option>
+                    <option value="150000">市區區域救援 ($150,000)</option>
+                    <option value="250000">中部區域救援 ($250,000)</option>
+                    <option value="350000">北部區域救援 ($350,000)</option>
+                    <option value="450000">深山區域救援 ($450,000)</option>
+                    <option value="650000">非本島區域救援 ($650,000)</option>
+                </select>
+                <label style="display:flex; align-items:center; gap:8px; margin-top:15px; cursor:pointer;">
+                    <input type="checkbox" id="rs-danger" style="width:auto; margin:0;"> 
+                    <span style="color:#e74c3c; font-weight:bold;">危險區域 (紅圈) 出勤 +$150,000</span>
+                </label>
+                <p style="font-size:11px; color:#aaa; margin-top:10px; line-height:1.6;">
+                    * 點擊確認後，將以「已接單」狀態直接寫入系統。<br>
+                    * 道路救援分成一律固定為總價的 <b>90%</b>。
+                </p>
+                <button onclick="submitRoadside()" style="background:var(--accent); color:black; margin-top:15px; font-weight:bold;">確認出勤回報</button>
+            </div>
+        </div>
         
-        <!-- 登出/返回按鈕 -->
-        <button style="background:#444; margin-top:20px;" onclick="location.reload()">返回前台</button>
+        <button style="background:#444; margin-top:20px;" onclick="location.reload()">登出 / 返回大廳</button>
     </div>
 </div>
 
@@ -247,10 +339,21 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    
+    // 全域變數定義
+    const ROLES_LIST = ['董事長', '副董事長', '秘書', '廠長', '副廠長', '技師', '實習技師'];
     let storeData = {}, userData = null, currentMode = 'single';
-    let empData = {}; // 用於暫存員工資料
+    let empData = {}; 
+    let ordersData = {};
+    let rolesData = {};
+    let fundsData = { balance: 0 };
+    let expensesData = {};
+    let paidWeeksData = {};
+    
+    let currentLoggedUserType = null; // 'boss' or 'emp'
+    let currentEmpId = null;
 
-    // 自定義吐司通知功能 (替換 blocked 掉的 alert)
+    // 工具函式：吐司通知
     function showToast(msg, type = 'info') {
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
@@ -267,38 +370,33 @@
         toast.style.animation = 'fadeIn 0.3s forwards, fadeOut 0.3s 2.7s forwards';
         toast.innerText = msg;
         container.appendChild(toast);
-        setTimeout(() => {
-            toast.remove();
-        }, 3000);
+        setTimeout(() => toast.remove(), 3000);
     }
 
-    // 自定義確認彈窗功能 (替換 blocked 掉的 confirm)
+    // 工具函式：自訂彈窗
     function showCustomConfirm(title, message, callback) {
-        const modal = document.getElementById('custom-modal');
-        const overlay = document.getElementById('modal-overlay');
-        const modalTitle = document.getElementById('modal-title');
-        const modalItemName = document.getElementById('modal-item-name');
-        const inputArea = document.getElementById('modal-input-area');
-        const confirmBtn = document.getElementById('modal-confirm');
+        const modal = document.getElementById('custom-modal'), overlay = document.getElementById('modal-overlay');
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-item-name').innerText = message;
+        document.getElementById('modal-input-area').innerHTML = ''; 
+        document.getElementById('modal-confirm').onclick = () => { callback(); closeModal(); };
+        modal.style.display = 'block'; overlay.style.display = 'block';
+    }
+    function closeModal() { document.getElementById('custom-modal').style.display = 'none'; document.getElementById('modal-overlay').style.display = 'none'; }
 
-        modalTitle.innerText = title;
-        modalItemName.innerText = message;
-        inputArea.innerHTML = ''; // 清空輸入框區域
-
-        confirmBtn.onclick = () => {
-            callback();
-            closeModal();
-        };
-
-        modal.style.display = 'block';
-        overlay.style.display = 'block';
+    // 工具函式：獲取本週起始時間 (週六 00:00)
+    function getWeekStartTimestamp() {
+        let now = new Date(), currentDay = now.getDay(); 
+        let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1); 
+        let sat = new Date(now);
+        sat.setDate(now.getDate() - diffToSaturday);
+        sat.setHours(0, 0, 0, 0);
+        return sat.getTime();
     }
 
-    function loginDiscord() {
-        window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
-    }
-
+    // 初始化與監聽
     window.onload = () => {
+        // Discord Auth
         const hash = new URLSearchParams(window.location.hash.slice(1));
         const token = hash.get('access_token');
         if (token) {
@@ -311,18 +409,24 @@
                 document.getElementById('user-id-display').innerText = `ID: ${res.id}`;
             });
         }
-        db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
         
-        // 監聽員工資料變更
-        db.ref('employees').on('value', s => {
-            empData = s.val() || {};
-            refreshEmpUI();
-        });
+        // 載入選擇列預設職位
+        document.getElementById('new-emp-role').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
+        document.getElementById('role-select').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
 
-        // 啟動營業統計監聽與過期自動清理
-        if(typeof initBusinessStats === 'function') initBusinessStats();
+        // DB 監聽
+        db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
+        db.ref('employees').on('value', s => { empData = s.val() || {}; refreshEmpUI(); refreshAllCalculations(); });
+        db.ref('roles').on('value', s => { rolesData = s.val() || {}; });
+        db.ref('orders').on('value', s => { ordersData = s.val() || {}; refreshAllCalculations(); });
+        db.ref('funds').on('value', s => { fundsData = s.val() || {balance: 0}; refreshFinanceUI(); });
+        db.ref('expenses').on('value', s => { expensesData = s.val() || {}; refreshFinanceUI(); });
+        db.ref('paid_weeks').on('value', s => { paidWeeksData = s.val() || {}; refreshAllCalculations(); });
     };
 
+    function loginDiscord() { window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`; }
+
+    // 前台購物車系統 UI 更新
     function refreshUI() {
         const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
         pC.innerHTML = '<option value="">請選擇...</option>'; aC.innerHTML = '<option value="">請選擇...</option>';
@@ -337,33 +441,20 @@
             catDiv.innerHTML = `
                 <div class="cat-header">
                     <div><b>${cat.name}</b><br><button class="webhook-btn" onclick="openWebhookModal('${catId}')">Webhook 設定</button></div>
-                    <button class="del-btn" style="background:#555" onclick="deleteCategory('${catId}')">刪除分類</button>
+                    <button class="del-btn" style="background:#555" onclick="deleteCategory('${catId}')">刪除</button>
                 </div>
                 <div id="list-${catId}" class="sortable-list"></div>
             `;
             aLC.appendChild(catDiv);
 
             const itemListDiv = catDiv.querySelector('.sortable-list');
-            const itemsArray = Object.entries(cat.items || {}).map(([id, data]) => ({ id, ...data }));
-            itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
+            const itemsArray = Object.entries(cat.items || {}).map(([id, data]) => ({ id, ...data })).sort((a, b) => (a.order || 0) - (b.order || 0));
             itemsArray.forEach(it => {
-                let priceLabel = '';
-                if(it.type === 'single') priceLabel = `$${it.price}`;
-                else if(it.type === 'retail') priceLabel = `$${it.price}/個 (上限:${it.max||'∞'})`;
-                else if(it.type === 'range') priceLabel = `$${it.min}-${it.max}`;
-                else priceLabel = '自填10%';
-
-                const row = document.createElement('div');
-                row.className = 'item-row'; row.dataset.id = it.id;
+                let pL = (it.type==='single') ? `$${it.price}` : (it.type==='retail') ? `$${it.price}/個(限${it.max||'∞'})` : (it.type==='range') ? `$${it.min}-${it.max}` : '自填10%';
+                let row = document.createElement('div'); row.className = 'item-row'; row.dataset.id = it.id;
                 row.innerHTML = `
-                    <div class="item-info">
-                        <span class="drag-handle">⠿</span>
-                        <div><b>${it.name}</b> <span style="color:#888; font-size:11px;">(${priceLabel})</span></div>
-                    </div>
-                    <div class="admin-btns">
-                        <button class="edit-btn" onclick="openEditModal('${catId}', '${it.id}')">編輯</button>
-                        <button class="del-btn" onclick="deleteItem('${catId}', '${it.id}')">下架</button>
-                    </div>
+                    <div class="item-info"><span class="drag-handle">⠿</span><div><b>${it.name}</b> <span style="color:#888;font-size:11px;">(${pL})</span></div></div>
+                    <div class="admin-btns"><button class="edit-btn" onclick="openEditModal('${catId}','${it.id}')">編輯</button><button class="del-btn" onclick="deleteItem('${catId}','${it.id}')">下架</button></div>
                 `;
                 itemListDiv.appendChild(row);
             });
@@ -371,200 +462,90 @@
         }
     }
 
-    // 渲染現有員工列表的 UI
-    function refreshEmpUI() {
-        const container = document.getElementById('admin-emp-list-container');
-        container.innerHTML = '';
-        const entries = Object.entries(empData);
-        if (entries.length === 0) {
-            container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center; padding:10px;">目前尚無設定任何員工帳號</p>';
-            return;
-        }
-        entries.forEach(([id, info]) => {
-            const row = document.createElement('div');
-            row.className = 'emp-list-item';
-            row.innerHTML = `
-                <div class="emp-list-info">
-                    <div><b>${info.nickname || '未設定暱稱'}</b></div>
-                    <div style="color:#888; font-size:11px;">帳號: ${info.username} | 密碼: ${info.password}</div>
-                </div>
-                <div>
-                    <button class="del-btn" onclick="deleteEmployee('${id}')">刪除</button>
-                </div>
-            `;
-            container.appendChild(row);
-        });
-    }
-
-    function openEditModal(catId, itemId) {
-        const item = storeData[catId].items[itemId];
-        const modal = document.getElementById('custom-modal'), overlay = document.getElementById('modal-overlay'), inputArea = document.getElementById('modal-input-area'), confirmBtn = document.getElementById('modal-confirm');
-        document.getElementById('modal-title').innerText = "編輯項目設定";
-        document.getElementById('modal-item-name').innerText = item.name;
-        inputArea.innerHTML = '';
-
-        if (item.type === 'retail') {
-            inputArea.innerHTML = `
-                <label>單價</label><input type="number" id="edit-price" value="${item.price}">
-                <label>數量上限</label><input type="number" id="edit-max" value="${item.max || ''}" placeholder="不設限請留空">
-            `;
-            confirmBtn.onclick = () => {
-                const p = document.getElementById('edit-price').value, m = document.getElementById('edit-max').value;
-                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: p, max: m }).then(() => {
-                    showToast('項目修改成功', 'success');
-                }); 
-                closeModal();
-            };
-        } else if (item.type === 'single') {
-            inputArea.innerHTML = `<label>售價</label><input type="number" id="edit-price" value="${item.price}">`;
-            confirmBtn.onclick = () => {
-                const p = document.getElementById('edit-price').value;
-                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: p }).then(() => {
-                    showToast('項目修改成功', 'success');
-                }); 
-                closeModal();
-            };
-        } else if (item.type === 'range') {
-            inputArea.innerHTML = `<label>最低</label><input type="number" id="edit-min" value="${item.min}"><label>最高</label><input type="number" id="edit-max" value="${item.max}">`;
-            confirmBtn.onclick = () => {
-                const min = document.getElementById('edit-min').value, max = document.getElementById('edit-max').value;
-                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ min, max }).then(() => {
-                    showToast('項目修改成功', 'success');
-                }); 
-                closeModal();
-            };
-        } else {
-            inputArea.innerHTML = `<p style="font-size:12px; color:#888">自填項目只需設定名稱</p>`;
-            confirmBtn.onclick = closeModal;
-        }
-        modal.style.display = 'block'; overlay.style.display = 'block';
-    }
-
-    function closeModal() { document.getElementById('custom-modal').style.display = 'none'; document.getElementById('modal-overlay').style.display = 'none'; }
-
+    // 項目相關輔助函式 (展開與計算)
     function updateItems() {
         const id = document.getElementById('pCat').value, listDiv = document.getElementById('item-list');
         listDiv.innerHTML = '';
         if (id && storeData[id].items) {
             document.getElementById('calc-section').style.display = 'block';
-            const itemsArray = Object.entries(storeData[id].items).map(([id, data]) => ({ id, ...data }));
-            itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
+            const itemsArray = Object.entries(storeData[id].items).map(([id, data]) => ({ id, ...data })).sort((a, b) => (a.order || 0) - (b.order || 0));
             itemsArray.forEach(it => {
                 let pt = (it.type==='custom') ? '自填總價' : (it.type==='retail') ? `$${it.price}/個` : (it.type==='range') ? `$${it.min}~${it.max}` : `$${it.price}`;
                 let extraUI = '';
-                if(it.type==='custom') {
-                    extraUI = `<div class="custom-price-input" id="box-${it.id}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>`;
-                } else if(it.type==='retail') {
-                    extraUI = `
-                        <div class="qty-control" id="qty-box-${it.id}">
-                            <span style="font-size:13px; color:#aaa">數量：</span>
-                            <button class="qty-btn" onclick="changeQty('${it.id}', -1, ${it.max||99999})">-</button>
-                            <input type="number" class="qty-input" id="qty-val-${it.id}" value="1" min="1" max="${it.max||99999}" oninput="validateQty('${it.id}', ${it.max||99999})">
-                            <button class="qty-btn" onclick="changeQty('${it.id}', 1, ${it.max||99999})">+</button>
-                            ${it.max ? `<span class="max-hint">(上限 ${it.max})</span>` : ''}
-                        </div>`;
-                }
-                listDiv.innerHTML += `
-                    <div class="item-option">
-                        <label class="item-main">
-                            <input type="checkbox" name="si" data-type="${it.type}" data-id="${it.id}" data-p="${it.price||0}" onchange="toggleExtra('${it.id}', '${it.type}', this.checked)" value="${it.name}">
-                            <span>${it.name}</span>
-                            <span class="price-tag">${pt}</span>
-                        </label>
-                        ${extraUI}
-                    </div>`;
+                if(it.type==='custom') extraUI = `<div class="custom-price-input" id="box-${it.id}"><input type="number" oninput="recalc()" placeholder="請輸入成交總額"></div>`;
+                else if(it.type==='retail') extraUI = `<div class="qty-control" id="qty-box-${it.id}"><span style="font-size:13px;color:#aaa">數量：</span><button class="qty-btn" onclick="changeQty('${it.id}',-1,${it.max||99999})">-</button><input type="number" class="qty-input" id="qty-val-${it.id}" value="1" oninput="validateQty('${it.id}',${it.max||99999})"><button class="qty-btn" onclick="changeQty('${it.id}',1,${it.max||99999})">+</button></div>`;
+                listDiv.innerHTML += `<div class="item-option"><label class="item-main"><input type="checkbox" name="si" data-type="${it.type}" data-id="${it.id}" data-p="${it.price||0}" onchange="toggleExtra('${it.id}', '${it.type}', this.checked)" value="${it.name}"><span>${it.name}</span><span class="price-tag">${pt}</span></label>${extraUI}</div>`;
             });
         }
         recalc();
     }
-
-    function validateQty(id, max) {
-        const input = document.getElementById(`qty-val-${id}`);
-        let v = parseInt(input.value);
-        if (v > max) input.value = max;
-        if (v < 1 || isNaN(v)) input.value = 1;
-        recalc();
-    }
-
-    function changeQty(id, delta, max) {
-        const input = document.getElementById(`qty-val-${id}`);
-        let current = parseInt(input.value) || 1;
-        current += delta;
-        if (current >= 1 && current <= max) {
-            input.value = current;
-            recalc();
-        }
-    }
-
-    function toggleExtra(id, type, checked) {
-        if(type === 'custom') document.getElementById(`box-${id}`).style.display = checked ? 'block' : 'none';
-        else if(type === 'retail') document.getElementById(`qty-box-${id}`).style.display = checked ? 'flex' : 'none';
-        recalc();
-    }
+    function validateQty(id, max) { let i = document.getElementById(`qty-val-${id}`), v = parseInt(i.value); if(v>max) i.value=max; if(v<1||isNaN(v)) i.value=1; recalc(); }
+    function changeQty(id, d, max) { let i = document.getElementById(`qty-val-${id}`), c = parseInt(i.value)||1; c+=d; if(c>=1&&c<=max){ i.value=c; recalc(); } }
+    function toggleExtra(id, t, c) { if(t==='custom') document.getElementById(`box-${id}`).style.display=c?'block':'none'; else if(t==='retail') document.getElementById(`qty-box-${id}`).style.display=c?'flex':'none'; recalc(); }
+    function setPriceMode(m) { currentMode = m; ['modeSingle','modeRetail','modeRange','modeCustom'].forEach(id => document.getElementById(id).classList.remove('active')); document.getElementById('mode'+m.charAt(0).toUpperCase()+m.slice(1)).classList.add('active'); document.getElementById('inputSingle').style.display=(m==='single'||m==='retail')?'block':'none'; document.getElementById('inputRetailExtra').style.display=(m==='retail')?'block':'none'; document.getElementById('inputRange').style.display=m==='range'?'flex':'none'; }
 
     function recalc() {
-        let fixed = 0, customOrig = 0, retailTotal = 0;
-        const sel = document.querySelectorAll('input[name="si"]:checked');
+        let f = 0, cO = 0, rT = 0, sel = document.querySelectorAll('input[name="si"]:checked');
         if(!sel.length) { document.getElementById('total-calc-hint').style.display='none'; document.getElementById('pPrice').value=''; return; }
-        
         sel.forEach(el => {
-            const t = el.getAttribute('data-type'), id = el.getAttribute('data-id'), p = parseFloat(el.getAttribute('data-p')) || 0;
-            if(t === 'custom') customOrig += parseFloat(document.querySelector(`#box-${id} input`).value) || 0;
-            else if(t === 'retail') retailTotal += (p * (parseInt(document.getElementById(`qty-val-${id}`).value) || 1));
-            else if(t === 'single') fixed += p;
+            let t = el.getAttribute('data-type'), id = el.getAttribute('data-id'), p = parseFloat(el.getAttribute('data-p'))||0;
+            if(t==='custom') cO += parseFloat(document.querySelector(`#box-${id} input`).value)||0;
+            else if(t==='retail') rT += (p * (parseInt(document.getElementById(`qty-val-${id}`).value)||1));
+            else if(t==='single') f += p;
         });
-        const cFinal = Math.floor(customOrig * 0.1);
-        const total = fixed + retailTotal + cFinal;
+        let cFinal = Math.floor(cO * 0.1), total = f + rT + cFinal;
         document.getElementById('total-calc-hint').style.display = 'block';
-        document.getElementById('total-calc-hint').innerHTML = `
-            ${fixed > 0 ? `項目小計：$${fixed}<br>` : ''}
-            ${retailTotal > 0 ? `零售小計：$${retailTotal}<br>` : ''}
-            ${cFinal > 0 ? `自填抽成(10%)：$${cFinal}<br>` : ''}
-            -------------------<br>總計金額：<b>$${total}</b>`;
+        document.getElementById('total-calc-hint').innerHTML = `${f>0?`項目小計：$${f}<br>`:''}${rT>0?`零售小計：$${rT}<br>`:''}${cFinal>0?`自填抽成(10%)：$${cFinal}<br>`:''}-------------------<br>總計金額：<b>$${total}</b>`;
         document.getElementById('pPrice').value = total;
     }
 
     async function generateOrderNo() {
-        const now = new Date(), dateStr = (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
-        const snap = await db.ref('order_counters/' + dateStr).transaction(c => (c || 0) + 1);
-        return `${dateStr}${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${snap.snapshot.val().toString().padStart(2, '0')}`;
+        let n = new Date(), d = (n.getMonth()+1).toString().padStart(2,'0')+n.getDate().toString().padStart(2,'0');
+        let snap = await db.ref('order_counters/'+d).transaction(c => (c||0)+1);
+        return `${d}${n.getHours().toString().padStart(2,'0')}${n.getMinutes().toString().padStart(2,'0')}${snap.snapshot.val().toString().padStart(2,'0')}`;
     }
 
+    // 發送訂單至 Webhook 且寫入待接大廳
     async function sendOrder() {
         if (!userData) return showToast("請先登入 Discord", "error");
         const cid = document.getElementById('pCat').value, finalP = document.getElementById('pPrice').value, sel = document.querySelectorAll('input[name="si"]:checked');
         if (!cid || !sel.length) return showToast("請勾選預定項目", "error");
-        const btn = document.getElementById('submit-btn');
-        btn.disabled = true; btn.innerText = "送單中...";
+        const btn = document.getElementById('submit-btn'); btn.disabled = true; btn.innerText = "送單中...";
 
         try {
             const orderNo = await generateOrderNo();
             let details = [];
             sel.forEach(el => {
-                const t = el.getAttribute('data-type'), id = el.getAttribute('data-id'), p = parseFloat(el.getAttribute('data-p')) || 0;
-                let info = el.value;
-                if(t==='custom') { let v = document.querySelector(`#box-${id} input`).value || 0; info += ` ($${v} -> 抽$${Math.floor(v*0.1)})`; }
-                else if(t==='retail') { let q = document.getElementById(`qty-val-${id}`).value; info += ` x${q} ($${p*q})`; }
-                else info += ` ($${p})`;
-                details.push(info);
+                let t=el.getAttribute('data-type'), id=el.getAttribute('data-id'), p=parseFloat(el.getAttribute('data-p'))||0, info=el.value;
+                if(t==='custom'){ let v=document.querySelector(`#box-${id} input`).value||0; info+=` ($${v} -> 抽$${Math.floor(v*0.1)})`; }
+                else if(t==='retail'){ let q=document.getElementById(`qty-val-${id}`).value; info+=` x${q} ($${p*q})`; }
+                else info+=` ($${p})`; details.push(info);
             });
-            await fetch(storeData[cid].webhook, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: "翔毅車業預定系統",
-                    embeds: [{
-                        title: `🆕 新預定單 #${orderNo}`, color: 16751104,
-                        fields: [
-                            { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
-                            { name: "💰 總金額", value: `**$${finalP}**`, inline: true },
-                            { name: "📋 服務明細", value: "```" + details.join("\n") + "```" }
-                        ], footer: { text: "翔毅車業 · 預訂系統" }, timestamp: new Date().toISOString()
-                    }]
-                })
-            });
+            
+            let webhookUrl = storeData[cid].webhook;
+            let embedPayload = {
+                title: `🆕 新預定單 #${orderNo}`, color: 16751104,
+                fields: [
+                    { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
+                    { name: "💰 總金額", value: `**$${finalP}**`, inline: true },
+                    { name: "📋 服務明細", value: "```\n" + details.join("\n") + "\n```" },
+                    { name: "🔴 處理狀態", value: "等待接單中..." }
+                ], footer: { text: "翔毅車業 · 預訂系統" }, timestamp: new Date().toISOString()
+            };
 
-            // 當顧客送出預定成功時，將該筆訂單金額與當下時間戳記寫入獨立的 'orders' 節點進行統計
-            db.ref('orders').push({ price: parseInt(finalP) || 0, timestamp: Date.now() });
+            // 附帶 wait=true 以獲取 messageId
+            let res = await fetch(webhookUrl + '?wait=true', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: "翔毅車業預定系統", embeds: [embedPayload] })
+            });
+            let msgData = await res.json();
+            
+            // 寫入 Orders 資料庫 (狀態：未接單)
+            await db.ref('orders').push({
+                orderNo: orderNo, timestamp: Date.now(), price: parseInt(finalP) || 0,
+                categoryId: cid, details: details, customerId: userData.id,
+                status: 'pending', messageId: msgData.id, webhookUrl: webhookUrl, embedData: embedPayload
+            });
 
             showToast(`預定成功！編號：${orderNo}`, "success"); 
             setTimeout(() => { location.reload(); }, 1500);
@@ -574,266 +555,239 @@
         }
     }
 
-    function setPriceMode(m) {
-        currentMode = m;
-        ['modeSingle','modeRetail','modeRange','modeCustom'].forEach(id => document.getElementById(id).classList.remove('active'));
-        document.getElementById('mode' + m.charAt(0).toUpperCase() + m.slice(1)).classList.add('active');
-        document.getElementById('inputSingle').style.display = (m==='single' || m==='retail') ? 'block' : 'none';
-        document.getElementById('inputRetailExtra').style.display = (m==='retail') ? 'block' : 'none';
-        document.getElementById('inputRange').style.display = m==='range' ? 'flex' : 'none';
-    }
-
-    // 老闆登入頁面顯示
+    // 登入路由與分頁切換
     function showLogin() { document.getElementById('player-view').style.display='none'; document.getElementById('login-view').style.display='block'; }
-    
-    // 員工登入頁面顯示
     function showEmpLogin() { document.getElementById('player-view').style.display='none'; document.getElementById('emp-login-view').style.display='block'; }
     
-    // 老闆驗證邏輯
+    function switchPage(pageId) {
+        ['manage','stats','employees','roles','finance','history','emp-pending','emp-stats','emp-roadside'].forEach(p => {
+            let el = document.getElementById(`admin-page-${p}`), btn = document.getElementById(`nav-btn-${p}`);
+            if(el) el.style.display = 'none';
+            if(btn) { btn.style.background = 'transparent'; btn.style.color = 'white'; }
+        });
+        let tgt = document.getElementById(`admin-page-${pageId}`), tBtn = document.getElementById(`nav-btn-${pageId}`);
+        if(tgt) tgt.style.display = 'block';
+        if(tBtn) { tBtn.style.background = 'var(--accent)'; tBtn.style.color = 'black'; }
+    }
+
     function authAdmin() {
         if (document.getElementById('aUser').value==='pomelo' && document.getElementById('aPass').value==='0326') {
+            currentLoggedUserType = 'boss';
             document.getElementById('login-view').style.display='none';
             document.getElementById('admin-view').style.display='block';
-            document.getElementById('nav-btn-manage').style.display = 'block'; // 確保老闆登入能看見管理選單頁面
-            document.getElementById('nav-btn-employees').style.display = 'block'; // 確保老闆登入能看見員工帳號管理頁面
-            switchAdminPage('manage'); // 預設進入後台時，顯示「預定系統管理」獨立頁面
-            showToast('老闆歡迎回來！', 'success');
-        } else {
-            showToast('管理員登入失敗，請確認密碼是否正確！', 'error');
-        }
+            document.getElementById('nav-boss').style.display='flex';
+            switchPage('manage'); showToast('老闆歡迎回來！', 'success');
+        } else { showToast('登入失敗，請檢查帳號密碼！', 'error'); }
     }
 
-    // 動態員工驗證邏輯 (比對資料庫資料)
     function authEmployee() {
-        const inputUser = document.getElementById('eUser').value;
-        const inputPass = document.getElementById('ePass').value;
-        
-        let found = false;
-        let empNick = '';
-        for (let id in empData) {
-            if (empData[id].username === inputUser && empData[id].password === inputPass) {
-                found = true;
-                empNick = empData[id].nickname;
-                break;
-            }
-        }
-        
-        if (found) {
+        let u = document.getElementById('eUser').value, p = document.getElementById('ePass').value;
+        currentEmpId = Object.keys(empData).find(id => empData[id].username === u && empData[id].password === p);
+        if (currentEmpId) {
+            currentLoggedUserType = 'emp';
             document.getElementById('emp-login-view').style.display='none';
             document.getElementById('admin-view').style.display='block';
-            document.getElementById('nav-btn-manage').style.display = 'none'; // 對員工隱藏「預定系統管理」分頁按鈕
-            document.getElementById('nav-btn-employees').style.display = 'none'; // 對員工隱藏「員工帳號管理」分頁按鈕
-            switchAdminPage('stats'); // 直接切換至獨立的「營業統計管理」分頁
-            showToast(`${empNick} 員工歡迎回來！`, 'success');
-        } else {
-            showToast('員工登入失敗，請確認帳號或密碼是否正確！', 'error');
-        }
+            document.getElementById('nav-emp').style.display='flex';
+            switchPage('emp-pending'); showToast(`${empData[currentEmpId].nickname} 歡迎回來！`, 'success');
+            refreshAllCalculations(); // 強制更新專屬視圖
+        } else { showToast('登入失敗，請檢查帳號密碼！', 'error'); }
     }
 
-    // 新增員工帳號到 Firebase
+    // 老闆專屬功能
     function addEmployee() {
-        const username = document.getElementById('new-emp-user').value.trim();
-        const password = document.getElementById('new-emp-pass').value.trim();
-        const nickname = document.getElementById('new-emp-nick').value.trim();
+        let u=document.getElementById('new-emp-user').value.trim(), p=document.getElementById('new-emp-pass').value.trim();
+        let n=document.getElementById('new-emp-nick').value.trim(), r=document.getElementById('new-emp-role').value;
+        if(!u || !p || !n) return showToast("請填寫完整帳密與暱稱", "error");
+        if(Object.values(empData).some(e => e.username === u)) return showToast("帳號已存在", "error");
+        db.ref('employees').push({username:u, password:p, nickname:n, role:r}).then(()=>{
+            showToast("員工新增成功", "success"); ['new-emp-user','new-emp-pass','new-emp-nick'].forEach(id=>document.getElementById(id).value='');
+        });
+    }
+    function updateEmpRole(eid, newRole) { db.ref(`employees/${eid}/role`).set(newRole).then(()=>showToast("職位已更新", "success")); }
+    function deleteEmployee(id) { showCustomConfirm("確定刪除員工？", `刪除「${empData[id]?.nickname}」登入權限`, () => { db.ref(`employees/${id}`).remove().then(()=>showToast("已刪除", "success")); }); }
+    
+    function refreshEmpUI() {
+        let c = document.getElementById('admin-emp-list-container'); c.innerHTML = '';
+        if(Object.keys(empData).length===0) return c.innerHTML='<p style="color:#666;font-size:12px;text-align:center;">無員工資料</p>';
+        Object.entries(empData).forEach(([id, i]) => {
+            let roleOpts = ROLES_LIST.map(r => `<option value="${r}" ${r===i.role?'selected':''}>${r}</option>`).join('');
+            c.innerHTML += `
+                <div class="emp-list-item">
+                    <div class="emp-list-info">
+                        <div><b>${i.nickname}</b></div>
+                        <div style="color:#888;font-size:11px;">帳:${i.username} | 密:${i.password}</div>
+                    </div>
+                    <div style="display:flex;gap:5px;">
+                        <select onchange="updateEmpRole('${id}', this.value)" style="margin:0;padding:4px;font-size:11px;">${roleOpts}</select>
+                        <button class="del-btn" onclick="deleteEmployee('${id}')">刪除</button>
+                    </div>
+                </div>`;
+        });
+    }
 
-        if (!username || !password || !nickname) {
-            return showToast("請填寫完整資訊 (帳號、密碼及暱稱)", 'error');
+    function loadRolePerms() {
+        let r = document.getElementById('role-select').value, h = '', cp = rolesData[r] || {};
+        for (let cid in storeData) {
+            let p = cp[cid] || { canAccept: false, pct: 0 };
+            h += `<div style="display:flex; justify-content:space-between; align-items:center; background:#222; padding:10px; border-radius:8px; margin-bottom:8px;">
+                    <span style="font-size:13px; font-weight:bold; width:35%;">${storeData[cid].name}</span>
+                    <label style="display:flex; align-items:center; gap:5px; margin:0; font-size:12px; cursor:pointer;"><input type="checkbox" id="perm-cb-${cid}" ${p.canAccept?'checked':''} style="margin:0;width:auto;">允許接單</label>
+                    <div style="display:flex; align-items:center; gap:5px; width:25%;"><input type="number" id="perm-pct-${cid}" value="${p.pct}" style="margin:0;padding:5px;height:28px;" placeholder="%"><span style="font-size:12px;color:#aaa">%</span></div>
+                  </div>`;
         }
+        document.getElementById('role-perms-container').innerHTML = h || '<p style="font-size:12px;color:#888">請先建分類</p>';
+    }
+    function saveRolePerms() {
+        let r = document.getElementById('role-select').value, p = {};
+        for(let cid in storeData) {
+            let cb = document.getElementById(`perm-cb-${cid}`);
+            if(cb) p[cid] = { canAccept: cb.checked, pct: parseInt(document.getElementById(`perm-pct-${cid}`).value)||0 };
+        }
+        db.ref(`roles/${r}`).set(p).then(()=>showToast(`${r} 權限已儲存`, "success"));
+    }
 
-        // 檢查帳號是否重複
-        for (let id in empData) {
-            if (empData[id].username === username) {
-                return showToast("此員工帳號已被使用，請更換一個", 'error');
+    function editBalance() {
+        showCustomConfirm("更正公款餘額", "請輸入最新餘額：", () => {
+            let v = parseInt(document.getElementById('edit-balance-input').value) || 0;
+            db.ref('funds/balance').set(v).then(()=>showToast("餘額已更新", "success"));
+        });
+        document.getElementById('modal-input-area').innerHTML = `<input type="number" id="edit-balance-input" value="${fundsData.balance || 0}">`;
+    }
+    function addExpense() {
+        let r=document.getElementById('expense-reason').value, a=parseInt(document.getElementById('expense-amount').value);
+        if(!r||!a) return;
+        db.ref('expenses').push({ reason:r, amount:a, timestamp:Date.now() });
+        db.ref('funds/balance').set((fundsData.balance||0) - a);
+        document.getElementById('expense-reason').value=''; document.getElementById('expense-amount').value='';
+    }
+    function refreshFinanceUI() {
+        if(document.getElementById('finance-balance')) document.getElementById('finance-balance').innerText = `$${fundsData.balance || 0}`;
+        let expHtml = '';
+        Object.values(expensesData).sort((a,b)=>b.timestamp-a.timestamp).forEach(ex => { expHtml += `<div style="display:flex;justify-content:space-between;border-bottom:1px solid #333;padding:4px 0;"><span>${ex.reason}</span><span style="color:#e74c3c;">-$${ex.amount}</span></div>`; });
+        if(document.getElementById('expense-list')) document.getElementById('expense-list').innerHTML = expHtml || '<span style="color:#666">無紀錄</span>';
+    }
+
+    function deleteOrder(id) {
+        showCustomConfirm("確定刪除訂單？", "若為已接單狀態，本週結算將自動扣除。", () => {
+            db.ref(`orders/${id}`).remove().then(() => showToast("已從資料庫移除", "success"));
+        });
+    }
+
+    function paySalaries() {
+        let ws = getWeekStartTimestamp(), btn = document.getElementById('btn-pay-salary'), amt = parseInt(btn.dataset.amount)||0;
+        if(amt<=0) return showToast("本週無薪資", "info");
+        showCustomConfirm("確認發薪？", `將扣公款 $${amt}，並註記本週為「已結算」。`, () => {
+            db.ref('funds/balance').set((fundsData.balance||0) - amt);
+            db.ref(`paid_weeks/${ws}`).set(true).then(()=>showToast("發放完成", "success"));
+        });
+    }
+
+    // 員工核心功能
+    async function acceptOrder(orderId) {
+        let order = ordersData[orderId];
+        if (order.status !== 'pending') return showToast("手速太慢，訂單已被接走！", "error");
+
+        let role = empData[currentEmpId]?.role || '技師', perm = rolesData[role] && rolesData[role][order.categoryId];
+        if (!perm || !perm.canAccept) return showToast(`【${role}】無權限接取此類別`, "error");
+
+        let comm = Math.floor(order.price * (parseInt(perm.pct)||0) / 100);
+        await db.ref(`orders/${orderId}`).update({ status:'accepted', acceptedBy:currentEmpId, commission:comm, acceptedAt:Date.now() });
+
+        if (order.webhookUrl && order.messageId && order.embedData) {
+            let nE = order.embedData; nE.color = 3066993;
+            if(nE.fields.length >= 4) { nE.fields[3].name = "🟢 處理狀態"; nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接單`; }
+            fetch(`${order.webhookUrl}/messages/${order.messageId}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({embeds:[nE]}) });
+        }
+        showToast("✅ 接單成功！業績已記入", "success");
+    }
+
+    async function submitRoadside() {
+        let locP = parseInt(document.getElementById('rs-plan').value), isD = document.getElementById('rs-danger').checked;
+        let finalP = locP + (isD ? 150000 : 0), comm = Math.floor(finalP * 0.9);
+        await db.ref('orders').push({
+            orderNo: "RS" + await generateOrderNo(), timestamp: Date.now(), price: finalP,
+            status: 'accepted', acceptedBy: currentEmpId, commission: comm, type: 'roadside', details: ["道路救援出勤"]
+        });
+        showToast("救援紀錄已送出", "success");
+    }
+
+    // 系統運算大核心
+    function refreshAllCalculations() {
+        let weekStart = getWeekStartTimestamp(), now = Date.now();
+        let bossTotal = 0, empStats = { count:0, amount:0, comm:0 }, payrolls = {};
+        let phtml = '', hhtml = '';
+        
+        let oArr = Object.entries(ordersData).map(([id, d])=>({id,...d})).sort((a,b)=>a.timestamp-b.timestamp); // 待接由舊到新
+        let oArrDesc = [...oArr].sort((a,b)=>b.timestamp-a.timestamp); // 歷史由新到舊
+
+        oArr.forEach(o => {
+            if(o.status==='pending') {
+                let cn = storeData[o.categoryId] ? storeData[o.categoryId].name : '未知';
+                phtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#222;">
+                            <div style="width:100%; display:flex; justify-content:space-between;"><b>#${o.orderNo}</b><span style="color:#aaa;font-size:11px;">[${cn}]</span></div>
+                            <div style="font-size:13px; color:#ddd;">總金額: <b style="color:var(--accent)">$${o.price}</b></div>
+                            <div style="font-size:11px; color:#888;">${new Date(o.timestamp).toLocaleString()}</div>
+                            <button onclick="acceptOrder('${o.id}')" style="background:#5865F2; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer;">立即接單</button>
+                          </div>`;
             }
-        }
-
-        db.ref('employees').push({
-            username: username,
-            password: password,
-            nickname: nickname
-        }).then(() => {
-            showToast("員工帳號新增成功！", 'success');
-            document.getElementById('new-emp-user').value = '';
-            document.getElementById('new-emp-pass').value = '';
-            document.getElementById('new-emp-nick').value = '';
-        }).catch(err => {
-            showToast("新增失敗，請再試一次", 'error');
-            console.error(err);
         });
-    }
 
-    // 刪除員工帳號（使用客製化 Modal 確認）
-    function deleteEmployee(id) {
-        const staffName = empData[id] ? empData[id].nickname : "該員工";
-        showCustomConfirm("確定刪除員工？", `確定要刪除員工「${staffName}」的登入帳號嗎？`, () => {
-            db.ref(`employees/${id}`).remove()
-                .then(() => showToast("員工刪除成功！", 'success'))
-                .catch(err => showToast("刪除失敗", 'error'));
-        });
-    }
-
-    // 刪除分類（使用客製化 Modal 確認）
-    function deleteCategory(id) {
-        const catName = storeData[id] ? storeData[id].name : "該分類";
-        showCustomConfirm("確定刪除分類？", `這將會一併移除「${catName}」下的所有服務項目，確定嗎？`, () => {
-            db.ref(`xiangyi_shop/${id}`).remove()
-                .then(() => showToast("分類已刪除", 'success'))
-                .catch(err => showToast("刪除失敗", 'error'));
-        });
-    }
-
-    // 下架項目（使用客製化 Modal 確認）
-    function deleteItem(cid, iid) {
-        const itemName = (storeData[cid] && storeData[cid].items && storeData[cid].items[iid]) ? storeData[cid].items[iid].name : "此項目";
-        showCustomConfirm("確定下架項目？", `確定要將「${itemName}」從預定系統下架嗎？`, () => {
-            db.ref(`xiangyi_shop/${cid}/items/${iid}`).remove()
-                .then(() => showToast("項目已下架", 'success'))
-                .catch(err => showToast("下架失敗", 'error'));
-        });
-    }
-
-    function addCat() {
-        const n = document.getElementById('nCatName').value, w = document.getElementById('nCatWeb').value;
-        if(n && w) { 
-            db.ref('xiangyi_shop').push({ name: n, webhook: w }).then(() => {
-                showToast('分類新增成功', 'success');
-            }); 
-            document.getElementById('nCatName').value=''; 
-            document.getElementById('nCatWeb').value=''; 
-        } else {
-            showToast('請輸入分類名稱及 Webhook 網址', 'error');
-        }
-    }
-    
-    function addItem() {
-        const id = document.getElementById('aCatSelect').value, n = document.getElementById('nItemName').value;
-        if(!id || !n) return showToast('請填寫完整項目資訊', 'error');
-        let d = { name: n, type: currentMode, order: Object.keys(storeData[id].items || {}).length };
-        if(currentMode==='single' || currentMode==='retail') {
-            d.price = document.getElementById('nItemPrice').value;
-            if(!d.price) return showToast('請填寫價格', 'error');
-            if(currentMode==='retail') d.max = document.getElementById('nItemMax').value;
-        } else if(currentMode==='range') { 
-            d.min=document.getElementById('nPriceMin').value; 
-            d.max=document.getElementById('nPriceMax').value; 
-            if(!d.min || !d.max) return showToast('請填寫最低與最高價格範圍', 'error');
-        }
-        db.ref(`xiangyi_shop/${id}/items`).push(d).then(() => {
-            showToast('項目上架成功', 'success');
-        }); 
-        document.getElementById('nItemName').value='';
-    }
-    
-    function saveOrder(cid) {
-        const rows = document.getElementById(`list-${cid}`).querySelectorAll('.item-row'), updates = {};
-        rows.forEach((r, i) => updates[`xiangyi_shop/${cid}/items/${r.dataset.id}/order`] = i);
-        db.ref().update(updates);
-    }
-    
-    function openWebhookModal(cid) {
-        const modal = document.getElementById('custom-modal'), overlay = document.getElementById('modal-overlay'), inputArea = document.getElementById('modal-input-area'), confirmBtn = document.getElementById('modal-confirm');
-        document.getElementById('modal-title').innerText = "修改 Webhook";
-        inputArea.innerHTML = `<input type="text" id="edit-webhook" value="${storeData[cid].webhook}">`;
-        confirmBtn.onclick = () => { 
-            db.ref(`xiangyi_shop/${cid}`).update({ webhook: document.getElementById('edit-webhook').value }).then(() => {
-                showToast('Webhook 更改成功', 'success');
-            }); 
-            closeModal(); 
-        };
-        modal.style.display = 'block'; overlay.style.display = 'block';
-    }
-
-    // 營業統計功能完整擴充函式
-    function getThisSaturdayZero() {
-        let now = new Date();
-        let currentDay = now.getDay(); // 0 是週日，1~6 是週一到週六
-        let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1); // 計算距離上一個週六過了幾天
-        let sat = new Date(now);
-        sat.setDate(now.getDate() - diffToSaturday);
-        sat.setHours(0, 0, 0, 0);
-        return sat.getTime();
-    }
-
-    function initBusinessStats() {
-        db.ref('orders').on('value', snapshot => {
-            let data = snapshot.val() || {};
-            let thisSatStart = getThisSaturdayZero();
-            
-            let thisWeekCount = 0;
-            let thisWeekAmount = 0;
-            let pastPeriodOrders = {};
-
-            for (let id in data) {
-                let order = data[id];
-                if (order.timestamp >= thisSatStart) {
-                    thisWeekCount++;
-                    thisWeekAmount += (parseInt(order.price) || 0);
-                } else {
-                    let ageMs = Date.now() - order.timestamp;
-                    if (ageMs > 3 * 86400000) {
-                        db.ref('orders/' + id).remove();
-                    } else {
-                        let dateKey = new Date(order.timestamp).toLocaleDateString('zh-TW');
-                        if (!pastPeriodOrders[dateKey]) pastPeriodOrders[dateKey] = { count: 0, total: 0 };
-                        pastPeriodOrders[dateKey].count++;
-                        pastPeriodOrders[dateKey].total += (parseInt(order.price) || 0);
-                    }
+        oArrDesc.forEach(o => {
+            if ((now - o.timestamp) <= 72*3600*1000) {
+                let badge = o.status==='pending' ? '<span style="color:#e74c3c">未接單</span>' : `<span style="color:#2ecc71">已接 (${empData[o.acceptedBy]?.nickname||'未知'})</span>`;
+                hhtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px;">
+                            <div style="display:flex; justify-content:space-between; width:100%;"><b>#${o.orderNo}</b><span>${badge}</span></div>
+                            <div style="color:#aaa; font-size:11px;">${new Date(o.timestamp).toLocaleString()} | 總額: $${o.price}</div>
+                            <button class="del-btn" style="align-self:flex-end; margin-top:5px;" onclick="deleteOrder('${o.id}')">刪除紀錄</button>
+                          </div>`;
+            }
+            if(o.timestamp >= weekStart && o.status==='accepted') {
+                bossTotal += o.price;
+                if(!payrolls[o.acceptedBy]) payrolls[o.acceptedBy] = 0;
+                payrolls[o.acceptedBy] += (o.commission || 0);
+                
+                if(currentLoggedUserType==='emp' && o.acceptedBy===currentEmpId) {
+                    empStats.count++; empStats.amount+=o.price; empStats.comm+=(o.commission||0);
                 }
             }
-
-            document.getElementById('stat-count').innerText = thisWeekCount;
-            document.getElementById('stat-amount').innerText = `$${thisWeekAmount}`;
-
-            let historyHtml = '';
-            let hasHistory = false;
-            for (let date in pastPeriodOrders) {
-                hasHistory = true;
-                historyHtml += `<div class="stat-history">📅 <b>${date}</b> 紀錄時段：<br>下單次數：${pastPeriodOrders[date].count} 次 | 金額加總：$${pastPeriodOrders[date].total}</div>`;
-            }
-            if (!hasHistory) {
-                historyHtml = '<p style="color:#666; font-size:12px; margin:5px 0;">目前暫無 3 天內的歷史保留紀錄</p>';
-            }
-            document.getElementById('stat-history-list').innerHTML = historyHtml;
         });
-    }
 
-    // 後台專用分頁切換控制邏輯
-    function switchAdminPage(page) {
-        const btnManage = document.getElementById('nav-btn-manage');
-        const btnStats = document.getElementById('nav-btn-stats');
-        const btnEmployees = document.getElementById('nav-btn-employees');
+        // 渲染更新
+        if(document.getElementById('emp-pending-list')) document.getElementById('emp-pending-list').innerHTML = phtml || '<p style="color:#666;font-size:12px;">大廳目前空空如也</p>';
+        if(document.getElementById('history-list')) document.getElementById('history-list').innerHTML = hhtml || '<p style="color:#666;font-size:12px;">72H內無紀錄</p>';
+        
+        if(document.getElementById('stat-count')) {
+            document.getElementById('stat-count').innerText = Object.values(ordersData).filter(o=>o.timestamp>=weekStart && o.status==='accepted').length;
+            document.getElementById('stat-amount').innerText = `$${bossTotal}`;
+        }
+        if(document.getElementById('finance-weekly-income')) document.getElementById('finance-weekly-income').innerText = `$${bossTotal}`;
+        if(document.getElementById('emp-my-count')) {
+            document.getElementById('emp-my-count').innerText = empStats.count;
+            document.getElementById('emp-my-amount').innerText = `$${empStats.amount}`;
+            document.getElementById('emp-my-commission').innerText = `$${empStats.comm}`;
+        }
 
-        const divManage = document.getElementById('admin-page-manage');
-        const divStats = document.getElementById('admin-page-stats');
-        const divEmployees = document.getElementById('admin-page-employees');
-
-        // 初始化所有按鈕狀態
-        btnManage.style.background = '#2a2a2a';
-        btnManage.style.color = 'white';
-        btnStats.style.background = '#2a2a2a';
-        btnStats.style.color = 'white';
-        btnEmployees.style.background = '#2a2a2a';
-        btnEmployees.style.color = 'white';
-
-        // 隱藏所有分頁
-        divManage.style.display = 'none';
-        divStats.style.display = 'none';
-        divEmployees.style.display = 'none';
-
-        if (page === 'manage') {
-            divManage.style.display = 'block';
-            btnManage.style.background = 'var(--accent)';
-            btnManage.style.color = 'black';
-        } else if (page === 'stats') {
-            divStats.style.display = 'block';
-            btnStats.style.background = 'var(--accent)';
-            btnStats.style.color = 'black';
-        } else if (page === 'employees') {
-            divEmployees.style.display = 'block';
-            btnEmployees.style.background = 'var(--accent)';
-            btnEmployees.style.color = 'black';
+        // 薪資單渲染
+        let prHtml='', tPr=0;
+        for(let eid in payrolls){ let eI=empData[eid]||{nickname:'已刪除',role:'-'}; prHtml+=`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #333;padding:5px 0;"><span>${eI.nickname} <span style="color:#888;font-size:10px;">(${eI.role})</span></span><b style="color:var(--accent)">$${payrolls[eid]}</b></div>`; tPr+=payrolls[eid]; }
+        prHtml+=`<div style="text-align:right;margin-top:10px;">本週總應發: <b style="color:#e74c3c;font-size:16px;">$${tPr}</b></div>`;
+        if(document.getElementById('payroll-list')) document.getElementById('payroll-list').innerHTML = prHtml || '<span style="color:#666;font-size:12px;">本週尚無接單</span>';
+        
+        let bP = document.getElementById('btn-pay-salary');
+        if(bP) {
+            if(paidWeeksData[weekStart]) { bP.innerText="本週已結清"; bP.style.background="#555"; bP.disabled=true; }
+            else { bP.innerText="從公款餘額結清薪資"; bP.style.background="#e74c3c"; bP.disabled=false; bP.dataset.amount=tPr; }
         }
     }
+
+    // 原有類別編輯函式保留
+    function addCat() { let n=document.getElementById('nCatName').value,w=document.getElementById('nCatWeb').value; if(n&&w){ db.ref('xiangyi_shop').push({name:n,webhook:w}).then(()=>showToast('新增成功','success')); } }
+    function addItem() { let id=document.getElementById('aCatSelect').value,n=document.getElementById('nItemName').value; if(!id||!n)return; let d={name:n,type:currentMode,order:Object.keys(storeData[id].items||{}).length}; if(currentMode==='single'||currentMode==='retail'){d.price=document.getElementById('nItemPrice').value; if(currentMode==='retail')d.max=document.getElementById('nItemMax').value;}else if(currentMode==='range'){d.min=document.getElementById('nPriceMin').value;d.max=document.getElementById('nPriceMax').value;} db.ref(`xiangyi_shop/${id}/items`).push(d).then(()=>showToast('上架成功','success')); }
+    function deleteCategory(id) { showCustomConfirm("刪除分類？", "包含旗下項目", ()=>db.ref(`xiangyi_shop/${id}`).remove()); }
+    function deleteItem(c, i) { showCustomConfirm("下架項目？", "", ()=>db.ref(`xiangyi_shop/${c}/items/${i}`).remove()); }
+    function saveOrder(cid) { let u={}, r=document.getElementById(`list-${cid}`).querySelectorAll('.item-row'); r.forEach((x,i)=>u[`xiangyi_shop/${cid}/items/${x.dataset.id}/order`]=i); db.ref().update(u); }
+    function openWebhookModal(cid) { document.getElementById('modal-title').innerText="修改 Webhook"; document.getElementById('modal-input-area').innerHTML=`<input type="text" id="edit-webhook" value="${storeData[cid].webhook}">`; document.getElementById('modal-confirm').onclick=()=>{ db.ref(`xiangyi_shop/${cid}`).update({webhook:document.getElementById('edit-webhook').value}); closeModal();}; document.getElementById('custom-modal').style.display='block'; document.getElementById('modal-overlay').style.display='block'; }
+    function openEditModal(cid,iid) { let i=storeData[cid].items[iid], a=document.getElementById('modal-input-area'); document.getElementById('modal-title').innerText="編輯"; if(i.type==='retail'){ a.innerHTML=`單價<input type="number" id="ep" value="${i.price}">上限<input type="number" id="em" value="${i.max||''}">`; document.getElementById('modal-confirm').onclick=()=>{ db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({price:document.getElementById('ep').value,max:document.getElementById('em').value}); closeModal(); } }else if(i.type==='single'){ a.innerHTML=`售價<input type="number" id="ep" value="${i.price}">`; document.getElementById('modal-confirm').onclick=()=>{ db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({price:document.getElementById('ep').value}); closeModal(); } }else if(i.type==='range'){ a.innerHTML=`最低<input type="number" id="emi" value="${i.min}">最高<input type="number" id="ema" value="${i.max}">`; document.getElementById('modal-confirm').onclick=()=>{ db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({min:document.getElementById('emi').value,max:document.getElementById('ema').value}); closeModal(); } }else{ a.innerHTML="僅限修改名稱，需刪除重設"; document.getElementById('modal-confirm').onclick=closeModal; } document.getElementById('custom-modal').style.display='block'; document.getElementById('modal-overlay').style.display='block'; }
 </script>
 </body>
 </html>
