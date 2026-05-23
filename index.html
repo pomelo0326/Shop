@@ -707,34 +707,75 @@
         });
     }
 
-    function paySalaries() {
-        let ws = getWeekStartTimestamp(), btn = document.getElementById('btn-pay-salary'), amt = parseInt(btn.dataset.amount)||0;
-        if(amt<=0) return showToast("本週無薪資", "info");
-        showCustomConfirm("確認發薪？", `將扣公款 $${amt}，並註記本週為「已結算」。`, () => {
-            db.ref('funds/balance').set((fundsData.balance||0) - amt);
-            db.ref(`paid_weeks/${ws}`).set(true).then(()=>showToast("發放完成", "success"));
+    function getCurrentWeekIncome() {
+        let ws = getWeekStartTimestamp();
+        let income = 0;
+        Object.values(ordersData).forEach(order => {
+            if (order.timestamp >= ws && order.status === 'accepted') {
+                income += parseInt(order.price) || 0;
+            }
         });
+        return income;
     }
 
+    function paySalaries() {
+        let ws = getWeekStartTimestamp();
+        let btn = document.getElementById('btn-pay-salary');
+        let salaryAmount = parseInt(btn.dataset.amount) || 0;
+        let weeklyIncome = getCurrentWeekIncome();
+
+        if (paidWeeksData[ws]) return showToast("本週已結清", "info");
+        if (weeklyIncome <= 0) return showToast("本週無收入可入公款", "info");
+
+        showCustomConfirm(
+            "確認結清？",
+            `會將本週總收入 $${weeklyIncome} 加入公款。薪資總額 $${salaryAmount} 只作為本週已結清紀錄。`,
+            async () => {
+                try {
+                    await db.ref('funds/balance').set((fundsData.balance || 0) + weeklyIncome);
+                    await db.ref(`paid_weeks/${ws}`).set({
+                        paid: true,
+                        income: weeklyIncome,
+                        salary: salaryAmount,
+                        paidAt: Date.now()
+                    });
+                    showToast("已結清，本週收入已加入公款", "success");
+                } catch (err) {
+                    console.error(err);
+                    showToast("結清失敗", "error");
+                }
+            }
+        );
+    }
 
     function cancelPaySalaries() {
         let ws = getWeekStartTimestamp();
+        let paidData = paidWeeksData[ws];
         let btn = document.getElementById('btn-unpay-salary');
-        let amt = parseInt(btn.dataset.amount) || 0;
 
-        if (!paidWeeksData[ws]) return showToast("本週尚未結清", "info");
-        if (amt <= 0) return showToast("本週無可退回薪資", "info");
+        if (!paidData) return showToast("本週尚未結清", "info");
 
-        showCustomConfirm("取消本週結清？", `將把本週薪資 $${amt} 加回公款，並恢復為「未結清」。`, async () => {
-            try {
-                await db.ref('funds/balance').set((fundsData.balance || 0) + amt);
-                await db.ref(`paid_weeks/${ws}`).remove();
-                showToast("已取消結清，薪資已加回公款", "success");
-            } catch (err) {
-                console.error(err);
-                showToast("取消結清失敗", "error");
+        // 新版會記錄 income；若是舊資料 true，則用目前畫面重新計算本週收入
+        let weeklyIncome = (typeof paidData === 'object' && paidData.income !== undefined)
+            ? (parseInt(paidData.income) || 0)
+            : (parseInt(btn.dataset.income) || getCurrentWeekIncome());
+
+        if (weeklyIncome <= 0) return showToast("沒有可扣回的本週收入", "info");
+
+        showCustomConfirm(
+            "取消本週結清？",
+            `會將已入公款的本週總收入 $${weeklyIncome} 從公款扣回，並恢復為未結清。`,
+            async () => {
+                try {
+                    await db.ref('funds/balance').set((fundsData.balance || 0) - weeklyIncome);
+                    await db.ref(`paid_weeks/${ws}`).remove();
+                    showToast("已取消結清，本週收入已從公款扣回", "success");
+                } catch (err) {
+                    console.error(err);
+                    showToast("取消結清失敗", "error");
+                }
             }
-        });
+        );
     }
 
     // 員工核心功能
@@ -833,19 +874,25 @@
         let bU = document.getElementById('btn-unpay-salary');
         if(bP) {
             bP.dataset.amount = tPr;
-            if(bU) bU.dataset.amount = tPr;
+            bP.dataset.income = bossTotal;
+            if(bU) {
+                bU.dataset.amount = tPr;
+                bU.dataset.income = bossTotal;
+            }
 
             if(paidWeeksData[weekStart]) {
-                bP.innerText = "本週已結清";
+                let paidInfo = paidWeeksData[weekStart];
+                let paidIncome = (typeof paidInfo === 'object' && paidInfo.income !== undefined) ? (parseInt(paidInfo.income) || 0) : bossTotal;
+                bP.innerText = "本週已結清，本週收入已入公款";
                 bP.style.background = "#555";
                 bP.disabled = true;
                 if(bU) {
                     bU.style.display = "block";
                     bU.disabled = false;
-                    bU.innerText = `取消結清並退回公款 $${tPr}`;
+                    bU.innerText = `取消結清並扣回公款 $${paidIncome}`;
                 }
             } else {
-                bP.innerText = "從公款餘額結清薪資";
+                bP.innerText = "結清薪資並將本週收入加入公款";
                 bP.style.background = "#e74c3c";
                 bP.disabled = false;
                 if(bU) {
