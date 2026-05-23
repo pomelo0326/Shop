@@ -260,6 +260,7 @@
                     <h5 style="margin:0 0 10px 0; color:#e74c3c;">💸 本週應發薪資 (自動結算)</h5>
                     <div id="payroll-list" style="font-size:13px; line-height:1.8;"></div>
                     <button id="btn-pay-salary" onclick="paySalaries()" style="background:#e74c3c; color:white; margin-top:15px; width:100%; padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">從公款餘額結清薪資</button>
+                    <button id="btn-unpay-salary" onclick="cancelPaySalaries()" style="display:none; background:#3498db; color:white; margin-top:8px; width:100%; padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">取消結清並退回公款</button>
                 </div>
             </div>
         </div>
@@ -715,6 +716,27 @@
         });
     }
 
+
+    function cancelPaySalaries() {
+        let ws = getWeekStartTimestamp();
+        let btn = document.getElementById('btn-unpay-salary');
+        let amt = parseInt(btn.dataset.amount) || 0;
+
+        if (!paidWeeksData[ws]) return showToast("本週尚未結清", "info");
+        if (amt <= 0) return showToast("本週無可退回薪資", "info");
+
+        showCustomConfirm("取消本週結清？", `將把本週薪資 $${amt} 加回公款，並恢復為「未結清」。`, async () => {
+            try {
+                await db.ref('funds/balance').set((fundsData.balance || 0) + amt);
+                await db.ref(`paid_weeks/${ws}`).remove();
+                showToast("已取消結清，薪資已加回公款", "success");
+            } catch (err) {
+                console.error(err);
+                showToast("取消結清失敗", "error");
+            }
+        });
+    }
+
     // 員工核心功能
     async function acceptOrder(orderId) {
         let order = ordersData[orderId];
@@ -808,9 +830,29 @@
         if(document.getElementById('payroll-list')) document.getElementById('payroll-list').innerHTML = prHtml || '<span style="color:#666;font-size:12px;">本週尚無接單</span>';
         
         let bP = document.getElementById('btn-pay-salary');
+        let bU = document.getElementById('btn-unpay-salary');
         if(bP) {
-            if(paidWeeksData[weekStart]) { bP.innerText="本週已結清"; bP.style.background="#555"; bP.disabled=true; }
-            else { bP.innerText="從公款餘額結清薪資"; bP.style.background="#e74c3c"; bP.disabled=false; bP.dataset.amount=tPr; }
+            bP.dataset.amount = tPr;
+            if(bU) bU.dataset.amount = tPr;
+
+            if(paidWeeksData[weekStart]) {
+                bP.innerText = "本週已結清";
+                bP.style.background = "#555";
+                bP.disabled = true;
+                if(bU) {
+                    bU.style.display = "block";
+                    bU.disabled = false;
+                    bU.innerText = `取消結清並退回公款 $${tPr}`;
+                }
+            } else {
+                bP.innerText = "從公款餘額結清薪資";
+                bP.style.background = "#e74c3c";
+                bP.disabled = false;
+                if(bU) {
+                    bU.style.display = "none";
+                    bU.disabled = true;
+                }
+            }
         }
     }
 
