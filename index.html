@@ -217,10 +217,6 @@
                 <input type="text" id="new-emp-user" placeholder="員工帳號 (登入用帳號)">
                 <input type="password" id="new-emp-pass" placeholder="員工密碼">
                 <input type="text" id="new-emp-nick" placeholder="員工暱稱 (顯示用)">
-                <select id="new-emp-pos">
-                    <option>董事長</option><option>副董事長</option><option>秘書</option><option>廠長</option>
-                    <option>副廠長</option><option>技師</option><option>實習技師</option>
-                </select>
                 <button onclick="addEmployee()" style="background:var(--accent); color:black; font-weight:bold; margin-top:10px;">新增員工</button>
             </div>
             <div class="cat-card">
@@ -636,15 +632,10 @@
 
     // 新增員工帳號到 Firebase
     function addEmployee() {
-    // ... 原本的 u, p, n 宣告
-    const pos = document.getElementById('new-emp-pos').value; // 新增這行宣告
-    if(u && p && n) {
-        db.ref('employees').push({ 
-            username: u, 
-            password: p, 
-            nickname: n, 
-            position: pos // 在這裡新增這行存入資料庫
-        });
+        const username = document.getElementById('new-emp-user').value.trim();
+        const password = document.getElementById('new-emp-pass').value.trim();
+        const nickname = document.getElementById('new-emp-nick').value.trim();
+
         if (!username || !password || !nickname) {
             return showToast("請填寫完整資訊 (帳號、密碼及暱稱)", 'error');
         }
