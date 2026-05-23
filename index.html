@@ -683,6 +683,7 @@
     }
 
     // 員工核心功能
+    // 員工接單：全額入帳至公款，分成金額僅做紀錄
     async function acceptOrder(orderId) {
         let order = ordersData[orderId];
         if (order.status !== 'pending') return showToast("手速太慢，訂單已被接走！", "error");
@@ -691,24 +692,47 @@
         if (!perm || !perm.canAccept) return showToast(`【${role}】無權限接取此類別`, "error");
 
         let comm = Math.floor(order.price * (parseInt(perm.pct)||0) / 100);
-        await db.ref(`orders/${orderId}`).update({ status:'accepted', acceptedBy:currentEmpId, commission:comm, acceptedAt:Date.now() });
+        
+        // 1. 更新訂單狀態與分成 (分成不在此時扣除)
+        await db.ref(`orders/${orderId}`).update({ 
+            status:'accepted', 
+            acceptedBy:currentEmpId, 
+            commission:comm, 
+            acceptedAt:Date.now() 
+        });
 
+        // 2. 自動累加【全額】至公款餘額
+        let currentBalance = fundsData.balance || 0;
+        await db.ref('funds/balance').set(currentBalance + order.price);
+
+        // 3. 更新 Discord Webhook (顯示全額入帳)
         if (order.webhookUrl && order.messageId && order.embedData) {
             let nE = order.embedData; nE.color = 3066993;
-            if(nE.fields.length >= 4) { nE.fields[3].name = "🟢 處理狀態"; nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接單`; }
+            if(nE.fields.length >= 4) { 
+                nE.fields[3].name = "🟢 處理狀態"; 
+                nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接單 (全額入帳: $${order.price})`; 
+            }
             fetch(`${order.webhookUrl}/messages/${order.messageId}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({embeds:[nE]}) });
         }
-        showToast("✅ 接單成功！業績已記入", "success");
+        showToast("✅ 接單成功！全額已記入公款", "success");
     }
 
+    // 道路救援：全額入帳至公款
     async function submitRoadside() {
         let locP = parseInt(document.getElementById('rs-plan').value), isD = document.getElementById('rs-danger').checked;
-        let finalP = locP + (isD ? 150000 : 0), comm = Math.floor(finalP * 0.9);
+        let finalP = locP + (isD ? 150000 : 0);
+        let comm = Math.floor(finalP * 0.9); // 紀錄分成 90%
+
         await db.ref('orders').push({
             orderNo: "RS" + await generateOrderNo(), timestamp: Date.now(), price: finalP,
             status: 'accepted', acceptedBy: currentEmpId, commission: comm, type: 'roadside', details: ["道路救援出勤"]
         });
-        showToast("救援紀錄已送出", "success");
+
+        // 自動累加【全額】至公款餘額
+        let currentBalance = fundsData.balance || 0;
+        await db.ref('funds/balance').set(currentBalance + finalP);
+
+        showToast("救援紀錄已送出，全額已記入公款", "success");
     }
 
     // 系統運算大核心
