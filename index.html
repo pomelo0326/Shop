@@ -735,6 +735,94 @@
         showToast("救援紀錄已送出，全額已記入公款", "success");
     }
 
+    // --- 單人薪資管理邏輯 (請直接貼入您的 <script> 區塊中) ---
+
+// 1. 結清指定員工的薪資
+async function settleEmployeeSalary(empId) {
+    if (!confirm(`確定要結清 ${empData[empId]?.nickname || '該員工'} 本週薪資嗎？`)) return;
+
+    let totalComm = 0;
+    for (let id in ordersData) {
+        if (ordersData[id].acceptedBy === empId && ordersData[id].status === 'accepted' && !ordersData[id].isPaid) {
+            totalComm += (ordersData[id].commission || 0);
+        }
+    }
+
+    if (totalComm <= 0) return showToast("該員工目前無待發薪資", "warning");
+
+    let newBalance = (fundsData.balance || 0) - totalComm;
+    await db.ref('funds/balance').set(newBalance);
+
+    let updates = {};
+    for (let id in ordersData) {
+        if (ordersData[id].acceptedBy === empId && ordersData[id].status === 'accepted' && !ordersData[id].isPaid) {
+            updates[`orders/${id}/isPaid`] = true;
+        }
+    }
+    await db.ref().update(updates);
+    showToast(`✅ 已結清薪資 ($${totalComm})`, "success");
+    updatePayrollUI(); // 更新介面
+}
+
+// 2. 取消結清
+async function cancelEmployeeSettlement(empId) {
+    if (!confirm(`確定要取消 ${empData[empId]?.nickname || '該員工'} 本週的薪資結清記錄嗎？`)) return;
+
+    let restoredComm = 0;
+    let updates = {};
+
+    for (let id in ordersData) {
+        if (ordersData[id].acceptedBy === empId && ordersData[id].isPaid === true) {
+            restoredComm += (ordersData[id].commission || 0);
+            updates[`orders/${id}/isPaid`] = null;
+        }
+    }
+
+    if (restoredComm === 0) return showToast("找不到該員工的已結清紀錄", "warning");
+
+    let newBalance = (fundsData.balance || 0) + restoredComm;
+    await db.ref('funds/balance').set(newBalance);
+    await db.ref().update(updates);
+
+    showToast(`⚠️ 已取消結清，公款已補回 $${restoredComm}`, "warning");
+    updatePayrollUI(); // 更新介面
+}
+
+// 3. 更新財務頁面的薪資列表 (請將此函式放進您的自動更新循環中)
+function updatePayrollUI() {
+    let payrollDiv = document.getElementById('payroll-list');
+    if (!payrollDiv) return;
+    payrollDiv.innerHTML = ""; 
+
+    for (let empId in empData) {
+        let totalUnpaid = 0;
+        let totalPaid = 0;
+
+        for (let orderId in ordersData) {
+            let order = ordersData[orderId];
+            if (order.acceptedBy === empId && order.status === 'accepted') {
+                if (!order.isPaid) totalUnpaid += (order.commission || 0);
+                else totalPaid += (order.commission || 0);
+            }
+        }
+
+        if (totalUnpaid > 0 || totalPaid > 0) {
+            payrollDiv.innerHTML += `
+                <div style="padding:10px; border-bottom:1px solid #333; margin-bottom:5px;">
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>${empData[empId].nickname}</span>
+                        <span>待發: <strong style="color:#2ecc71">$${totalUnpaid}</strong> | 已發: <strong style="color:#777">$${totalPaid}</strong></span>
+                    </div>
+                    <div style="margin-top:5px; display:flex; gap:5px;">
+                        ${totalUnpaid > 0 ? `<button onclick="settleEmployeeSalary('${empId}')" style="background:#2ecc71; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; flex:1;">結清</button>` : ''}
+                        ${totalPaid > 0 ? `<button onclick="cancelEmployeeSettlement('${empId}')" style="background:#e74c3c; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; flex:1;">取消</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+    }
+}
+
     // 系統運算大核心
     function refreshAllCalculations() {
         let weekStart = getWeekStartTimestamp(), now = Date.now();
