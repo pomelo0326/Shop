@@ -64,6 +64,29 @@
         /* 自定義彈窗 */
         #custom-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2a2a2a; padding: 20px; border-radius: 10px; border: 2px solid var(--accent); z-index: 1000; box-shadow: 0 0 20px rgba(0,0,0,0.8); width: 85%; max-width: 320px; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; }
+
+        /* 營業統計專屬樣式 */
+        .stat-section { border: 1px solid #444; background: #111; padding: 15px; border-radius: 10px; margin-top: 5px; }
+        .stat-box { background: #1a1a1a; padding: 12px; border-radius: 8px; margin-top: 8px; border: 1px dashed var(--accent); font-size: 15px; line-height: 1.6; }
+        .stat-history { background: #222; padding: 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; border-left: 3px solid #555; }
+        
+        /* 後台頂部導覽列樣式 */
+        .admin-nav { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 15px; }
+        .admin-nav button { flex: 1; margin: 0; padding: 10px; font-size: 12px; font-weight: bold; transition: 0.2s; }
+
+        /* 僅新增：員工帳號列表樣式 */
+        .emp-list-item { display: flex; justify-content: space-between; align-items: center; background: #333; padding: 10px 12px; border-radius: 8px; margin-top: 8px; font-size: 13px; border: 1px solid #444; }
+        .emp-list-info { display: flex; flex-direction: column; gap: 3px; }
+
+        /* 吐司訊息通知（Toast）動畫 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -10px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translate(-50%, 0); }
+            to { opacity: 0; transform: translate(-50%, -10px); }
+        }
     </style>
 </head>
 <body>
@@ -79,11 +102,16 @@
     </div>
 </div>
 
+<!-- 吐司訊息容器 -->
+<div id="toast-container" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
+
 <div class="card">
     <h2>🏎️ 翔毅車業預定系統</h2>
 
+    <!-- 前台預定介面 -->
     <div id="player-view">
-        <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號驗證</button>
+        <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號验证</button>
+        
         <div id="user-display" class="user-box">
             <img id="user-avatar" src="" alt="">
             <div style="display:flex; flex-direction:column;">
@@ -107,41 +135,100 @@
         </div>
         
         <button class="btn-send" id="submit-btn" onclick="sendOrder()">送出預定</button>
-        <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin-top:40px;" onclick="showLogin()">⚙️ 翔毅員工管理中心</p>
+
+        <!-- 管理與員工後台入口分開 -->
+        <div style="display: flex; justify-content: center; gap: 20px; margin-top:40px;">
+            <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin: 0;" onclick="showLogin()">⚙️ 老闆後台管理</p>
+            <p style="font-size: 10px; color: #444; text-align: center; cursor: pointer; margin: 0;" onclick="showEmpLogin()">⚙️ 員工後台登入</p>
+        </div>
     </div>
 
+    <!-- 老闆後台登入頁面 -->
     <div id="login-view" style="display:none;">
-        <h3>員工登入</h3>
-        <input type="text" id="aUser" placeholder="帳號">
-        <input type="password" id="aPass" placeholder="密碼">
+        <h3>老闆後台登入</h3>
+        <input type="text" id="aUser" placeholder="老闆帳號">
+        <input type="password" id="aPass" placeholder="老闆密碼">
         <button onclick="authAdmin()">登入</button>
         <button style="background:#444;" onclick="location.reload()">返回</button>
     </div>
 
+    <!-- 員工後台登入頁面 -->
+    <div id="emp-login-view" style="display:none;">
+        <h3>員工後台登入</h3>
+        <input type="text" id="eUser" placeholder="員工帳號">
+        <input type="password" id="ePass" placeholder="員工密碼">
+        <button onclick="authEmployee()">登入</button>
+        <button style="background:#444;" onclick="location.reload()">返回</button>
+    </div>
+
+    <!-- 後台管理主介面 -->
     <div id="admin-view" class="admin-section">
-        <div class="cat-card">
-            <h4>1. 分類管理</h4>
-            <input type="text" id="nCatName" placeholder="分類名稱">
-            <input type="text" id="nCatWeb" placeholder="Webhook 網址">
-            <button onclick="addCat()">新增分類</button>
+        <!-- 後台分頁導航列 -->
+        <div class="admin-nav">
+            <button id="nav-btn-manage" onclick="switchAdminPage('manage')" style="background: var(--accent); color: black;">預定系統管理</button>
+            <button id="nav-btn-stats" onclick="switchAdminPage('stats')" style="background: #2a2a2a; color: white;">營業統計管理</button>
+            <button id="nav-btn-employees" onclick="switchAdminPage('employees')" style="background: #2a2a2a; color: white;">員工帳號管理</button>
         </div>
-        <div class="cat-card">
-            <h4>2. 項目管理</h4>
-            <select id="aCatSelect"></select>
-            <input type="text" id="nItemName" placeholder="項目名稱">
-            <div class="mode-toggle">
-                <button id="modeSingle" class="active" onclick="setPriceMode('single')">固定價</button>
-                <button id="modeRetail" onclick="setPriceMode('retail')">零售</button>
-                <button id="modeRange" onclick="setPriceMode('range')">範圍</button>
-                <button id="modeCustom" onclick="setPriceMode('custom')">自填10%</button>
+
+        <!-- 原有後台管理頁面 -->
+        <div id="admin-page-manage">
+            <div class="cat-card">
+                <h4>1. 分類管理</h4>
+                <input type="text" id="nCatName" placeholder="分類名稱">
+                <input type="text" id="nCatWeb" placeholder="Webhook 網址">
+                <button onclick="addCat()">新增分類</button>
             </div>
-            <div id="inputSingle"><input type="number" id="nItemPrice" placeholder="單價"></div>
-            <!-- 新增數量上限輸入 -->
-            <div id="inputRetailExtra" style="display:none;"><input type="number" id="nItemMax" placeholder="數量上限 (例如：10)"></div>
-            <div id="inputRange" style="display:none; display:flex; gap:5px;"><input type="number" id="nPriceMin" placeholder="最低">~<input type="number" id="nPriceMax" placeholder="最高"></div>
-            <button onclick="addItem()" style="margin-top:10px">確認上架</button>
+            <div class="cat-card">
+                <h4>2. 項目管理</h4>
+                <select id="aCatSelect"></select>
+                <input type="text" id="nItemName" placeholder="項目名稱">
+                <div class="mode-toggle">
+                    <button id="modeSingle" class="active" onclick="setPriceMode('single')">固定價</button>
+                    <button id="modeRetail" onclick="setPriceMode('retail')">零售</button>
+                    <button id="modeRange" onclick="setPriceMode('range')">範圍</button>
+                    <button id="modeCustom" onclick="setPriceMode('custom')">自填10%</button>
+                </div>
+                <div id="inputSingle"><input type="number" id="nItemPrice" placeholder="單價"></div>
+                <div id="inputRetailExtra" style="display:none;"><input type="number" id="nItemMax" placeholder="數量上限 (例如：10)"></div>
+                <div id="inputRange" style="display:none; display:flex; gap:5px;"><input type="number" id="nPriceMin" placeholder="最低">~<input type="number" id="nPriceMax" placeholder="最高"></div>
+                <button onclick="addItem()" style="margin-top:10px">確認上架</button>
+            </div>
+            <div id="admin-list-container"></div>
         </div>
-        <div id="admin-list-container"></div>
+
+        <!-- 營業統計專屬獨立頁面 -->
+        <div id="admin-page-stats" style="display: none;">
+            <div class="stat-section">
+                <h4 style="margin:0; color:var(--accent);">📈 營業統計管理</h4>
+                <div class="stat-box">
+                    <div style="font-weight:bold; color:#fff; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">本週數據輪迴 (週六 00:00 ~ 週五 23:59)</div>
+                    <div>下單總次數：<span id="stat-count" style="color:var(--accent); font-weight:bold;">0</span> 次</div>
+                    <div>總營業金額：<span id="stat-amount" style="color:#2ecc71; font-weight:bold;">$0</span></div>
+                </div>
+                <h5 style="margin:15px 0 5px 0; color:#aaa;">上一個時段紀錄 (保留3天查看)：</h5>
+                <div id="stat-history-list"></div>
+            </div>
+        </div>
+
+        <!-- 員工帳號管理專屬獨立頁面 -->
+        <div id="admin-page-employees" style="display: none;">
+            <div class="cat-card">
+                <h4 style="margin-top:0; color:var(--accent);">新增員工帳號</h4>
+                <input type="text" id="new-emp-user" placeholder="員工帳號 (登入用帳號)">
+                <input type="password" id="new-emp-pass" placeholder="員工密碼">
+                <input type="text" id="new-emp-nick" placeholder="員工暱稱 (顯示用)">
+                <button onclick="addEmployee()" style="background:var(--accent); color:black; font-weight:bold; margin-top:10px;">新增員工</button>
+            </div>
+            <div class="cat-card">
+                <h4 style="margin-top:0;">現有員工清單</h4>
+                <div id="admin-emp-list-container">
+                    <p style="color:#666; font-size:12px; text-align:center; padding:10px;">載入中...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 登出/返回按鈕 -->
+        <button style="background:#444; margin-top:20px;" onclick="location.reload()">返回前台</button>
     </div>
 </div>
 
@@ -161,6 +248,51 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     let storeData = {}, userData = null, currentMode = 'single';
+    let empData = {}; // 用於暫存員工資料
+
+    // 自定義吐司通知功能 (替換 blocked 掉的 alert)
+    function showToast(msg, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.style.pointerEvents = 'auto';
+        toast.style.background = type === 'error' ? '#e74c3c' : type === 'success' ? '#2ecc71' : '#333';
+        toast.style.color = '#fff';
+        toast.style.padding = '12px 24px';
+        toast.style.borderRadius = '8px';
+        toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+        toast.style.fontSize = '14px';
+        toast.style.fontWeight = 'bold';
+        toast.style.minWidth = '220px';
+        toast.style.textAlign = 'center';
+        toast.style.animation = 'fadeIn 0.3s forwards, fadeOut 0.3s 2.7s forwards';
+        toast.innerText = msg;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    }
+
+    // 自定義確認彈窗功能 (替換 blocked 掉的 confirm)
+    function showCustomConfirm(title, message, callback) {
+        const modal = document.getElementById('custom-modal');
+        const overlay = document.getElementById('modal-overlay');
+        const modalTitle = document.getElementById('modal-title');
+        const modalItemName = document.getElementById('modal-item-name');
+        const inputArea = document.getElementById('modal-input-area');
+        const confirmBtn = document.getElementById('modal-confirm');
+
+        modalTitle.innerText = title;
+        modalItemName.innerText = message;
+        inputArea.innerHTML = ''; // 清空輸入框區域
+
+        confirmBtn.onclick = () => {
+            callback();
+            closeModal();
+        };
+
+        modal.style.display = 'block';
+        overlay.style.display = 'block';
+    }
 
     function loginDiscord() {
         window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
@@ -180,13 +312,21 @@
             });
         }
         db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
+        
+        // 監聽員工資料變更
+        db.ref('employees').on('value', s => {
+            empData = s.val() || {};
+            refreshEmpUI();
+        });
+
+        // 啟動營業統計監聽與過期自動清理
+        if(typeof initBusinessStats === 'function') initBusinessStats();
     };
 
     function refreshUI() {
         const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
         pC.innerHTML = '<option value="">請選擇...</option>'; aC.innerHTML = '<option value="">請選擇...</option>';
         aLC.innerHTML = '';
-
         for (let catId in storeData) {
             const cat = storeData[catId];
             pC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
@@ -206,7 +346,6 @@
             const itemListDiv = catDiv.querySelector('.sortable-list');
             const itemsArray = Object.entries(cat.items || {}).map(([id, data]) => ({ id, ...data }));
             itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
-
             itemsArray.forEach(it => {
                 let priceLabel = '';
                 if(it.type === 'single') priceLabel = `$${it.price}`;
@@ -232,6 +371,31 @@
         }
     }
 
+    // 渲染現有員工列表的 UI
+    function refreshEmpUI() {
+        const container = document.getElementById('admin-emp-list-container');
+        container.innerHTML = '';
+        const entries = Object.entries(empData);
+        if (entries.length === 0) {
+            container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center; padding:10px;">目前尚無設定任何員工帳號</p>';
+            return;
+        }
+        entries.forEach(([id, info]) => {
+            const row = document.createElement('div');
+            row.className = 'emp-list-item';
+            row.innerHTML = `
+                <div class="emp-list-info">
+                    <div><b>${info.nickname || '未設定暱稱'}</b></div>
+                    <div style="color:#888; font-size:11px;">帳號: ${info.username} | 密碼: ${info.password}</div>
+                </div>
+                <div>
+                    <button class="del-btn" onclick="deleteEmployee('${id}')">刪除</button>
+                </div>
+            `;
+            container.appendChild(row);
+        });
+    }
+
     function openEditModal(catId, itemId) {
         const item = storeData[catId].items[itemId];
         const modal = document.getElementById('custom-modal'), overlay = document.getElementById('modal-overlay'), inputArea = document.getElementById('modal-input-area'), confirmBtn = document.getElementById('modal-confirm');
@@ -246,19 +410,28 @@
             `;
             confirmBtn.onclick = () => {
                 const p = document.getElementById('edit-price').value, m = document.getElementById('edit-max').value;
-                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: p, max: m }); closeModal();
+                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: p, max: m }).then(() => {
+                    showToast('項目修改成功', 'success');
+                }); 
+                closeModal();
             };
         } else if (item.type === 'single') {
             inputArea.innerHTML = `<label>售價</label><input type="number" id="edit-price" value="${item.price}">`;
             confirmBtn.onclick = () => {
                 const p = document.getElementById('edit-price').value;
-                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: p }); closeModal();
+                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ price: p }).then(() => {
+                    showToast('項目修改成功', 'success');
+                }); 
+                closeModal();
             };
         } else if (item.type === 'range') {
             inputArea.innerHTML = `<label>最低</label><input type="number" id="edit-min" value="${item.min}"><label>最高</label><input type="number" id="edit-max" value="${item.max}">`;
             confirmBtn.onclick = () => {
                 const min = document.getElementById('edit-min').value, max = document.getElementById('edit-max').value;
-                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ min, max }); closeModal();
+                db.ref(`xiangyi_shop/${catId}/items/${itemId}`).update({ min, max }).then(() => {
+                    showToast('項目修改成功', 'success');
+                }); 
+                closeModal();
             };
         } else {
             inputArea.innerHTML = `<p style="font-size:12px; color:#888">自填項目只需設定名稱</p>`;
@@ -276,7 +449,6 @@
             document.getElementById('calc-section').style.display = 'block';
             const itemsArray = Object.entries(storeData[id].items).map(([id, data]) => ({ id, ...data }));
             itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
-
             itemsArray.forEach(it => {
                 let pt = (it.type==='custom') ? '自填總價' : (it.type==='retail') ? `$${it.price}/個` : (it.type==='range') ? `$${it.min}~${it.max}` : `$${it.price}`;
                 let extraUI = '';
@@ -341,7 +513,6 @@
             else if(t === 'retail') retailTotal += (p * (parseInt(document.getElementById(`qty-val-${id}`).value) || 1));
             else if(t === 'single') fixed += p;
         });
-
         const cFinal = Math.floor(customOrig * 0.1);
         const total = fixed + retailTotal + cFinal;
         document.getElementById('total-calc-hint').style.display = 'block';
@@ -360,10 +531,11 @@
     }
 
     async function sendOrder() {
-        if (!userData) return alert("請先登入 Discord");
+        if (!userData) return showToast("請先登入 Discord", "error");
         const cid = document.getElementById('pCat').value, finalP = document.getElementById('pPrice').value, sel = document.querySelectorAll('input[name="si"]:checked');
-        if (!cid || !sel.length) return alert("請勾選預定項目");
-        const btn = document.getElementById('submit-btn'); btn.disabled = true; btn.innerText = "送單中...";
+        if (!cid || !sel.length) return showToast("請勾選預定項目", "error");
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true; btn.innerText = "送單中...";
 
         try {
             const orderNo = await generateOrderNo();
@@ -376,7 +548,6 @@
                 else info += ` ($${p})`;
                 details.push(info);
             });
-
             await fetch(storeData[cid].webhook, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -391,8 +562,16 @@
                     }]
                 })
             });
-            alert(`預定成功！編號：${orderNo}`); location.reload();
-        } catch (e) { alert("發送失敗，請聯繫管理員檢查 Webhook"); btn.disabled = false; btn.innerText = "送出預定"; }
+
+            // 當顧客送出預定成功時，將該筆訂單金額與當下時間戳記寫入獨立的 'orders' 節點進行統計
+            db.ref('orders').push({ price: parseInt(finalP) || 0, timestamp: Date.now() });
+
+            showToast(`預定成功！編號：${orderNo}`, "success"); 
+            setTimeout(() => { location.reload(); }, 1500);
+        } catch (e) { 
+            showToast("發送失敗，請聯繫管理員檢查 Webhook", "error"); 
+            btn.disabled = false; btn.innerText = "送出預定"; 
+        }
     }
 
     function setPriceMode(m) {
@@ -404,39 +583,256 @@
         document.getElementById('inputRange').style.display = m==='range' ? 'flex' : 'none';
     }
 
+    // 老闆登入頁面顯示
     function showLogin() { document.getElementById('player-view').style.display='none'; document.getElementById('login-view').style.display='block'; }
+    
+    // 員工登入頁面顯示
+    function showEmpLogin() { document.getElementById('player-view').style.display='none'; document.getElementById('emp-login-view').style.display='block'; }
+    
+    // 老闆驗證邏輯
     function authAdmin() {
         if (document.getElementById('aUser').value==='pomelo' && document.getElementById('aPass').value==='0326') {
-            document.getElementById('login-view').style.display='none'; document.getElementById('admin-view').style.display='block';
-        } else alert('登入失敗');
+            document.getElementById('login-view').style.display='none';
+            document.getElementById('admin-view').style.display='block';
+            document.getElementById('nav-btn-manage').style.display = 'block'; // 確保老闆登入能看見管理選單頁面
+            document.getElementById('nav-btn-employees').style.display = 'block'; // 確保老闆登入能看見員工帳號管理頁面
+            switchAdminPage('manage'); // 預設進入後台時，顯示「預定系統管理」獨立頁面
+            showToast('老闆歡迎回來！', 'success');
+        } else {
+            showToast('管理員登入失敗，請確認密碼是否正確！', 'error');
+        }
     }
+
+    // 動態員工驗證邏輯 (比對資料庫資料)
+    function authEmployee() {
+        const inputUser = document.getElementById('eUser').value;
+        const inputPass = document.getElementById('ePass').value;
+        
+        let found = false;
+        let empNick = '';
+        for (let id in empData) {
+            if (empData[id].username === inputUser && empData[id].password === inputPass) {
+                found = true;
+                empNick = empData[id].nickname;
+                break;
+            }
+        }
+        
+        if (found) {
+            document.getElementById('emp-login-view').style.display='none';
+            document.getElementById('admin-view').style.display='block';
+            document.getElementById('nav-btn-manage').style.display = 'none'; // 對員工隱藏「預定系統管理」分頁按鈕
+            document.getElementById('nav-btn-employees').style.display = 'none'; // 對員工隱藏「員工帳號管理」分頁按鈕
+            switchAdminPage('stats'); // 直接切換至獨立的「營業統計管理」分頁
+            showToast(`${empNick} 員工歡迎回來！`, 'success');
+        } else {
+            showToast('員工登入失敗，請確認帳號或密碼是否正確！', 'error');
+        }
+    }
+
+    // 新增員工帳號到 Firebase
+    function addEmployee() {
+        const username = document.getElementById('new-emp-user').value.trim();
+        const password = document.getElementById('new-emp-pass').value.trim();
+        const nickname = document.getElementById('new-emp-nick').value.trim();
+
+        if (!username || !password || !nickname) {
+            return showToast("請填寫完整資訊 (帳號、密碼及暱稱)", 'error');
+        }
+
+        // 檢查帳號是否重複
+        for (let id in empData) {
+            if (empData[id].username === username) {
+                return showToast("此員工帳號已被使用，請更換一個", 'error');
+            }
+        }
+
+        db.ref('employees').push({
+            username: username,
+            password: password,
+            nickname: nickname
+        }).then(() => {
+            showToast("員工帳號新增成功！", 'success');
+            document.getElementById('new-emp-user').value = '';
+            document.getElementById('new-emp-pass').value = '';
+            document.getElementById('new-emp-nick').value = '';
+        }).catch(err => {
+            showToast("新增失敗，請再試一次", 'error');
+            console.error(err);
+        });
+    }
+
+    // 刪除員工帳號（使用客製化 Modal 確認）
+    function deleteEmployee(id) {
+        const staffName = empData[id] ? empData[id].nickname : "該員工";
+        showCustomConfirm("確定刪除員工？", `確定要刪除員工「${staffName}」的登入帳號嗎？`, () => {
+            db.ref(`employees/${id}`).remove()
+                .then(() => showToast("員工刪除成功！", 'success'))
+                .catch(err => showToast("刪除失敗", 'error'));
+        });
+    }
+
+    // 刪除分類（使用客製化 Modal 確認）
+    function deleteCategory(id) {
+        const catName = storeData[id] ? storeData[id].name : "該分類";
+        showCustomConfirm("確定刪除分類？", `這將會一併移除「${catName}」下的所有服務項目，確定嗎？`, () => {
+            db.ref(`xiangyi_shop/${id}`).remove()
+                .then(() => showToast("分類已刪除", 'success'))
+                .catch(err => showToast("刪除失敗", 'error'));
+        });
+    }
+
+    // 下架項目（使用客製化 Modal 確認）
+    function deleteItem(cid, iid) {
+        const itemName = (storeData[cid] && storeData[cid].items && storeData[cid].items[iid]) ? storeData[cid].items[iid].name : "此項目";
+        showCustomConfirm("確定下架項目？", `確定要將「${itemName}」從預定系統下架嗎？`, () => {
+            db.ref(`xiangyi_shop/${cid}/items/${iid}`).remove()
+                .then(() => showToast("項目已下架", 'success'))
+                .catch(err => showToast("下架失敗", 'error'));
+        });
+    }
+
     function addCat() {
         const n = document.getElementById('nCatName').value, w = document.getElementById('nCatWeb').value;
-        if(n && w) { db.ref('xiangyi_shop').push({ name: n, webhook: w }); document.getElementById('nCatName').value=''; document.getElementById('nCatWeb').value=''; }
+        if(n && w) { 
+            db.ref('xiangyi_shop').push({ name: n, webhook: w }).then(() => {
+                showToast('分類新增成功', 'success');
+            }); 
+            document.getElementById('nCatName').value=''; 
+            document.getElementById('nCatWeb').value=''; 
+        } else {
+            showToast('請輸入分類名稱及 Webhook 網址', 'error');
+        }
     }
+    
     function addItem() {
         const id = document.getElementById('aCatSelect').value, n = document.getElementById('nItemName').value;
-        if(!id || !n) return alert('請填寫完整資訊');
+        if(!id || !n) return showToast('請填寫完整項目資訊', 'error');
         let d = { name: n, type: currentMode, order: Object.keys(storeData[id].items || {}).length };
         if(currentMode==='single' || currentMode==='retail') {
             d.price = document.getElementById('nItemPrice').value;
+            if(!d.price) return showToast('請填寫價格', 'error');
             if(currentMode==='retail') d.max = document.getElementById('nItemMax').value;
-        } else if(currentMode==='range') { d.min=document.getElementById('nPriceMin').value; d.max=document.getElementById('nPriceMax').value; }
-        db.ref(`xiangyi_shop/${id}/items`).push(d); document.getElementById('nItemName').value='';
+        } else if(currentMode==='range') { 
+            d.min=document.getElementById('nPriceMin').value; 
+            d.max=document.getElementById('nPriceMax').value; 
+            if(!d.min || !d.max) return showToast('請填寫最低與最高價格範圍', 'error');
+        }
+        db.ref(`xiangyi_shop/${id}/items`).push(d).then(() => {
+            showToast('項目上架成功', 'success');
+        }); 
+        document.getElementById('nItemName').value='';
     }
+    
     function saveOrder(cid) {
         const rows = document.getElementById(`list-${cid}`).querySelectorAll('.item-row'), updates = {};
         rows.forEach((r, i) => updates[`xiangyi_shop/${cid}/items/${r.dataset.id}/order`] = i);
         db.ref().update(updates);
     }
-    function deleteCategory(id) { if(confirm('確定刪除分類？')) db.ref(`xiangyi_shop/${id}`).remove(); }
-    function deleteItem(cid, iid) { db.ref(`xiangyi_shop/${cid}/items/${iid}`).remove(); }
+    
     function openWebhookModal(cid) {
         const modal = document.getElementById('custom-modal'), overlay = document.getElementById('modal-overlay'), inputArea = document.getElementById('modal-input-area'), confirmBtn = document.getElementById('modal-confirm');
         document.getElementById('modal-title').innerText = "修改 Webhook";
         inputArea.innerHTML = `<input type="text" id="edit-webhook" value="${storeData[cid].webhook}">`;
-        confirmBtn.onclick = () => { db.ref(`xiangyi_shop/${cid}`).update({ webhook: document.getElementById('edit-webhook').value }); closeModal(); };
+        confirmBtn.onclick = () => { 
+            db.ref(`xiangyi_shop/${cid}`).update({ webhook: document.getElementById('edit-webhook').value }).then(() => {
+                showToast('Webhook 更改成功', 'success');
+            }); 
+            closeModal(); 
+        };
         modal.style.display = 'block'; overlay.style.display = 'block';
+    }
+
+    // 營業統計功能完整擴充函式
+    function getThisSaturdayZero() {
+        let now = new Date();
+        let currentDay = now.getDay(); // 0 是週日，1~6 是週一到週六
+        let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1); // 計算距離上一個週六過了幾天
+        let sat = new Date(now);
+        sat.setDate(now.getDate() - diffToSaturday);
+        sat.setHours(0, 0, 0, 0);
+        return sat.getTime();
+    }
+
+    function initBusinessStats() {
+        db.ref('orders').on('value', snapshot => {
+            let data = snapshot.val() || {};
+            let thisSatStart = getThisSaturdayZero();
+            
+            let thisWeekCount = 0;
+            let thisWeekAmount = 0;
+            let pastPeriodOrders = {};
+
+            for (let id in data) {
+                let order = data[id];
+                if (order.timestamp >= thisSatStart) {
+                    thisWeekCount++;
+                    thisWeekAmount += (parseInt(order.price) || 0);
+                } else {
+                    let ageMs = Date.now() - order.timestamp;
+                    if (ageMs > 3 * 86400000) {
+                        db.ref('orders/' + id).remove();
+                    } else {
+                        let dateKey = new Date(order.timestamp).toLocaleDateString('zh-TW');
+                        if (!pastPeriodOrders[dateKey]) pastPeriodOrders[dateKey] = { count: 0, total: 0 };
+                        pastPeriodOrders[dateKey].count++;
+                        pastPeriodOrders[dateKey].total += (parseInt(order.price) || 0);
+                    }
+                }
+            }
+
+            document.getElementById('stat-count').innerText = thisWeekCount;
+            document.getElementById('stat-amount').innerText = `$${thisWeekAmount}`;
+
+            let historyHtml = '';
+            let hasHistory = false;
+            for (let date in pastPeriodOrders) {
+                hasHistory = true;
+                historyHtml += `<div class="stat-history">📅 <b>${date}</b> 紀錄時段：<br>下單次數：${pastPeriodOrders[date].count} 次 | 金額加總：$${pastPeriodOrders[date].total}</div>`;
+            }
+            if (!hasHistory) {
+                historyHtml = '<p style="color:#666; font-size:12px; margin:5px 0;">目前暫無 3 天內的歷史保留紀錄</p>';
+            }
+            document.getElementById('stat-history-list').innerHTML = historyHtml;
+        });
+    }
+
+    // 後台專用分頁切換控制邏輯
+    function switchAdminPage(page) {
+        const btnManage = document.getElementById('nav-btn-manage');
+        const btnStats = document.getElementById('nav-btn-stats');
+        const btnEmployees = document.getElementById('nav-btn-employees');
+
+        const divManage = document.getElementById('admin-page-manage');
+        const divStats = document.getElementById('admin-page-stats');
+        const divEmployees = document.getElementById('admin-page-employees');
+
+        // 初始化所有按鈕狀態
+        btnManage.style.background = '#2a2a2a';
+        btnManage.style.color = 'white';
+        btnStats.style.background = '#2a2a2a';
+        btnStats.style.color = 'white';
+        btnEmployees.style.background = '#2a2a2a';
+        btnEmployees.style.color = 'white';
+
+        // 隱藏所有分頁
+        divManage.style.display = 'none';
+        divStats.style.display = 'none';
+        divEmployees.style.display = 'none';
+
+        if (page === 'manage') {
+            divManage.style.display = 'block';
+            btnManage.style.background = 'var(--accent)';
+            btnManage.style.color = 'black';
+        } else if (page === 'stats') {
+            divStats.style.display = 'block';
+            btnStats.style.background = 'var(--accent)';
+            btnStats.style.color = 'black';
+        } else if (page === 'employees') {
+            divEmployees.style.display = 'block';
+            btnEmployees.style.background = 'var(--accent)';
+            btnEmployees.style.color = 'black';
+        }
     }
 </script>
 </body>
