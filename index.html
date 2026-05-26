@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v5.0</title>
+    <title>翔毅車業預定系統 v5.5</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -202,7 +202,7 @@
                     <div style="font-weight:bold; color:#fff; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">計算週期: 週六 00:00 ~ 週五 23:59</div>
                     <div>成功接單總數：<span id="stat-count" style="color:var(--accent); font-weight:bold;">0</span> 次</div>
                     <div>系統總營業額：<span id="stat-amount" style="color:#2ecc71; font-weight:bold;">$0</span></div>
-                    <p style="font-size:11px; color:#888; margin-top:5px;">* 僅計算「已接單」與「道路救援」之營業額</p>
+                    <p style="font-size:11px; color:#888; margin-top:5px;">* 僅計算「已完成接單」與「道路救援」之營業額</p>
                 </div>
             </div>
         </div>
@@ -257,10 +257,8 @@
                 </div>
 
                 <div class="stat-box" style="margin-top:15px; border-color:#e74c3c;">
-                    <h5 style="margin:0 0 10px 0; color:#e74c3c;">💸 本週應發薪資 (自動結算)</h5>
+                    <h5 style="margin:0 0 10px 0; color:#e74c3c;">💸 本週員工薪水結算 (分開結算)</h5>
                     <div id="payroll-list" style="font-size:13px; line-height:1.8;"></div>
-                    <button id="btn-pay-salary" onclick="paySalaries()" style="background:#e74c3c; color:white; margin-top:15px; width:100%; padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">從公款餘額結清薪資</button>
-                    <button id="btn-unpay-salary" onclick="cancelPaySalaries()" style="display:none; background:#3498db; color:white; margin-top:8px; width:100%; padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">取消結清並退回公款</button>
                 </div>
             </div>
         </div>
@@ -269,7 +267,7 @@
         <div id="admin-page-history" style="display:none;">
             <div class="stat-section">
                 <h4 style="color:var(--accent); margin-top:0;">📜 歷史訂單 (72H內)</h4>
-                <p style="font-size:11px; color:#aaa; margin-top:0;">* 若刪除「已接單」項目，本週收入與員工薪資將自動扣回。</p>
+                <p style="font-size:11px; color:#aaa; margin-top:0;">* 您可以展開並單獨「刪減」訂單中的服務，總收入與抽成將實時倒扣校正。</p>
                 <div id="history-list" style="max-height:400px; overflow-y:auto; padding-right:5px;"></div>
             </div>
         </div>
@@ -277,7 +275,7 @@
         <!-- EMP 1. 員工 - 待接取訂單 -->
         <div id="admin-page-emp-pending" style="display:none;">
             <div class="stat-section" style="border-color:var(--accent);">
-                <h4 style="color:var(--accent); margin-top:0;">🔔 大廳待接訂單</h4>
+                <h4 style="color:var(--accent); margin-top:0;">🔔 大廳待接訂單 (限制一次接一單)</h4>
                 <div id="emp-pending-list" style="max-height:450px; overflow-y:auto;"></div>
             </div>
         </div>
@@ -314,7 +312,7 @@
                     <span style="color:#e74c3c; font-weight:bold;">危險區域 (紅圈) 出勤 +$150,000</span>
                 </label>
                 <p style="font-size:11px; color:#aaa; margin-top:10px; line-height:1.6;">
-                    * 點擊確認後，將以「已接單」狀態直接寫入系統。<br>
+                    * 道路救援直接以「已確認完成」形式計入薪資與本週收入。<br>
                     * 道路救援分成一律固定為總價的 <b>90%</b>。
                 </p>
                 <button onclick="submitRoadside()" style="background:var(--accent); color:black; margin-top:15px; font-weight:bold;">確認出勤回報</button>
@@ -669,8 +667,61 @@
     }
 
     function deleteOrder(id) {
-        showCustomConfirm("確定刪除訂單？", "若為已接單狀態，本週結算將自動扣除。", () => {
+        showCustomConfirm("確定刪除訂單？", "若此訂單為已結算狀態，請先取消結算，否則將自動扣減數據。", () => {
             db.ref(`orders/${id}`).remove().then(() => showToast("已從資料庫移除", "success"));
+        });
+    }
+
+    // 新增/修改：單個服務項目細項刪除，支持未確認完成 (processing) 及已完成訂單，實時動態縮減金額、抽成與公款
+    function deleteOrderSubItem(orderId, itemIndex) {
+        let o = ordersData[orderId];
+        if (!o || !o.details) return;
+        if (o.details.length <= 1) {
+            return showToast("訂單至少需保留一個項目，若要清空請直接取消或刪除整筆訂單！", "error");
+        }
+
+        showCustomConfirm("刪減此服務細項？", "確定要將此細項從訂單中移除？總金額與分成將連動重算。", async () => {
+            let itemStr = o.details[itemIndex];
+            
+            // 從細項字串中動態提取金額，如 "基礎升級 ($100000)" -> 100000
+            let priceMatch = itemStr.match(/\$(\d+)/);
+            let subtractedPrice = 0;
+            if (priceMatch && priceMatch[1]) {
+                subtractedPrice = parseInt(priceMatch[1]) || 0;
+            } else {
+                // 如果是 retail 項目如 "引擎 x2 ($200000)"
+                let retailMatch = itemStr.match(/\(\$(\d+)\)/);
+                if (retailMatch && retailMatch[1]) {
+                    subtractedPrice = parseInt(retailMatch[1]) || 0;
+                }
+            }
+
+            let newDetails = [...o.details];
+            newDetails.splice(itemIndex, 1);
+
+            let oldPrice = parseInt(o.price) || 0;
+            let newPrice = Math.max(0, oldPrice - subtractedPrice);
+
+            // 重新計算對應職位的分成 (加入 processing 狀態以支持員工即時運算)
+            let newCommission = 0;
+            if (o.status === 'accepted' || o.status === 'completed' || o.status === 'processing') {
+                let worker = empData[o.acceptedBy];
+                if (worker) {
+                    let role = worker.role || '技師';
+                    let perm = rolesData[role] && rolesData[role][o.categoryId];
+                    let pct = perm ? (parseInt(perm.pct) || 0) : 0;
+                    newCommission = Math.floor(newPrice * pct / 100);
+                }
+            }
+
+            let updates = {
+                [`orders/${orderId}/details`]: newDetails,
+                [`orders/${orderId}/price`]: newPrice,
+                [`orders/${orderId}/commission`]: newCommission
+            };
+
+            await db.ref().update(updates);
+            showToast("✅ 細項刪減成功！數據已同步重新運算。", "success");
         });
     }
 
@@ -678,9 +729,9 @@
     async function cancelOrder(id) {
         let order = ordersData[id];
         if (!order) return showToast("訂單不存在", "error");
-        if (order.status !== 'pending') return showToast("此訂單已被接取，無法取消", "error");
+        if (order.status !== 'pending' && order.status !== 'processing') return showToast("此訂單已被確認完成，無法取消", "error");
 
-        showCustomConfirm("取消此訂單？", "此操作會將訂單從待接清單移除，並同步標記 Discord 訊息為已取消。", async () => {
+        showCustomConfirm("取消此訂單？", "此操作會將訂單從清單移除，並同步標記 Discord 訊息為已取消。", async () => {
             try {
                 if (order.webhookUrl && order.messageId && order.embedData) {
                     let cancelEmbed = JSON.parse(JSON.stringify(order.embedData));
@@ -711,68 +762,110 @@
         let ws = getWeekStartTimestamp();
         let income = 0;
         Object.values(ordersData).forEach(order => {
-            if (order.timestamp >= ws && order.status === 'accepted') {
+            // 注意：現在只有 completed (確認完成) 的訂單才計入本週總營收
+            if (order.timestamp >= ws && order.status === 'completed') {
                 income += parseInt(order.price) || 0;
             }
         });
         return income;
     }
 
-    function paySalaries() {
+    // 重構：員工個別結算薪資並全額入公款
+    async function paySingleEmployee(empId) {
         let ws = getWeekStartTimestamp();
-        let btn = document.getElementById('btn-pay-salary');
-        let salaryAmount = parseInt(btn.dataset.amount) || 0;
-        let weeklyIncome = getCurrentWeekIncome();
+        let nickname = empData[empId]?.nickname || "員工";
 
-        if (paidWeeksData[ws]) return showToast("本週已結清", "info");
-        if (weeklyIncome <= 0) return showToast("本週無收入可入公款", "info");
+        // 計算該名員工本週尚未結算的 completed 訂單
+        let unpaidOrders = Object.entries(ordersData).filter(([id, o]) => {
+            return o.timestamp >= ws && 
+                   o.status === 'completed' && 
+                   o.acceptedBy === empId && 
+                   (!o.isPaid);
+        });
+
+        if (unpaidOrders.length === 0) {
+            return showToast(`${nickname} 目前無待發薪資或無待結算營業額！`, "info");
+        }
+
+        // 該名員工所完成的訂單總營收與分成
+        let totalIncome = 0;
+        let totalSalary = 0;
+        unpaidOrders.forEach(([id, o]) => {
+            totalIncome += (parseInt(o.price) || 0);
+            totalSalary += (parseInt(o.commission) || 0);
+        });
 
         showCustomConfirm(
-            "確認結清？",
-            `會將本週總收入 $${weeklyIncome} 加入公款。薪資總額 $${salaryAmount} 只作為本週已結清紀錄。`,
+            "個別確認結算",
+            `將結算 ${nickname}。本週帶入公款之營業總額為 $${totalIncome}，實發員工薪資 $${totalSalary} (薪資不進入公款)。`,
             async () => {
                 try {
-                    await db.ref('funds/balance').set((fundsData.balance || 0) + weeklyIncome);
-                    await db.ref(`paid_weeks/${ws}`).set({
-                        paid: true,
-                        income: weeklyIncome,
-                        salary: salaryAmount,
-                        paidAt: Date.now()
+                    // 1. 將該名員工本週創造的「總營業額」加入公款
+                    let newBalance = (fundsData.balance || 0) + totalIncome;
+                    await db.ref('funds/balance').set(newBalance);
+
+                    // 2. 將這些訂單標記為 isPaid: true 避免重複發放與結算
+                    let updates = {};
+                    unpaidOrders.forEach(([id, o]) => {
+                        updates[`orders/${id}/isPaid`] = true;
                     });
-                    showToast("已結清，本週收入已加入公款", "success");
+                    
+                    // 3. 記錄到 paid_weeks，防止重複操作
+                    updates[`paid_weeks/${ws}/${empId}`] = {
+                        paid: true,
+                        income: totalIncome,
+                        salary: totalSalary,
+                        paidAt: Date.now()
+                    };
+
+                    await db.ref().update(updates);
+                    showToast(`✅ ${nickname} 結算成功！本週收入已入公款。`, "success");
                 } catch (err) {
                     console.error(err);
-                    showToast("結清失敗", "error");
+                    showToast("結算失敗，請稍後再試", "error");
                 }
             }
         );
     }
 
-    function cancelPaySalaries() {
+    // 重構：員工個別取消結算並從公款扣回營業額
+    async function cancelPaySingleEmployee(empId) {
         let ws = getWeekStartTimestamp();
-        let paidData = paidWeeksData[ws];
-        let btn = document.getElementById('btn-unpay-salary');
+        let nickname = empData[empId]?.nickname || "員工";
 
-        if (!paidData) return showToast("本週尚未結清", "info");
+        let paidRecord = paidWeeksData[ws]?.[empId];
+        if (!paidRecord) {
+            return showToast(`本週找不到 ${nickname} 的已結清紀錄`, "info");
+        }
 
-        // 新版會記錄 income；若是舊資料 true，則用目前畫面重新計算本週收入
-        let weeklyIncome = (typeof paidData === 'object' && paidData.income !== undefined)
-            ? (parseInt(paidData.income) || 0)
-            : (parseInt(btn.dataset.income) || getCurrentWeekIncome());
-
-        if (weeklyIncome <= 0) return showToast("沒有可扣回的本週收入", "info");
+        let totalIncome = parseInt(paidRecord.income) || 0;
+        let totalSalary = parseInt(paidRecord.salary) || 0;
 
         showCustomConfirm(
-            "取消本週結清？",
-            `會將已入公款的本週總收入 $${weeklyIncome} 從公款扣回，並恢復為未結清。`,
+            "取消個別結清？",
+            `將從公款中扣回 ${nickname} 結清入帳之本週營收 $${totalIncome}，並恢復薪資未結清。`,
             async () => {
                 try {
-                    await db.ref('funds/balance').set((fundsData.balance || 0) - weeklyIncome);
-                    await db.ref(`paid_weeks/${ws}`).remove();
-                    showToast("已取消結清，本週收入已從公款扣回", "success");
+                    // 1. 從公款中扣回該營業額
+                    let newBalance = Math.max(0, (fundsData.balance || 0) - totalIncome);
+                    await db.ref('funds/balance').set(newBalance);
+
+                    // 2. 將對應訂單的 isPaid 狀態標記取消
+                    let updates = {};
+                    Object.entries(ordersData).forEach(([id, o]) => {
+                        if (o.timestamp >= ws && o.status === 'completed' && o.acceptedBy === empId && o.isPaid) {
+                            updates[`orders/${id}/isPaid`] = null;
+                        }
+                    });
+
+                    // 3. 移除該員工本週在 paid_weeks 節點下的結算記錄
+                    await db.ref(`paid_weeks/${ws}/${empId}`).remove();
+                    await db.ref().update(updates);
+
+                    showToast(`⚠️ 已成功取消 ${nickname} 的結算！`, "warning");
                 } catch (err) {
                     console.error(err);
-                    showToast("取消結清失敗", "error");
+                    showToast("取消失敗，請稍後再試", "error");
                 }
             }
         );
@@ -780,34 +873,89 @@
 
     // 員工核心功能
     async function acceptOrder(orderId) {
+        // 限制一：檢查員工此時是否已經有「進行中 (processing)」或「未確認完成」的訂單
+        let hasActiveOrder = Object.values(ordersData).some(o => {
+            return o.acceptedBy === currentEmpId && o.status === 'processing';
+        });
+        if (hasActiveOrder) {
+            return showToast("⚠️ 您手邊已有正在處理中的訂單，必須完成後才能接新單！", "error");
+        }
+
         let order = ordersData[orderId];
         if (order.status !== 'pending') return showToast("手速太慢，訂單已被接走！", "error");
 
         let role = empData[currentEmpId]?.role || '技師', perm = rolesData[role] && rolesData[role][order.categoryId];
         if (!perm || !perm.canAccept) return showToast(`【${role}】無權限接取此類別`, "error");
 
+        // 僅將狀態設定為 'processing' (處理中)，此時不計入分成金額或營業額，直到點選「確認完成」
         let comm = Math.floor(order.price * (parseInt(perm.pct)||0) / 100);
-        await db.ref(`orders/${orderId}`).update({ status:'accepted', acceptedBy:currentEmpId, commission:comm, acceptedAt:Date.now() });
+        await db.ref(`orders/${orderId}`).update({ 
+            status: 'processing', 
+            acceptedBy: currentEmpId, 
+            commission: comm, 
+            acceptedAt: Date.now() 
+        });
 
         if (order.webhookUrl && order.messageId && order.embedData) {
-            let nE = order.embedData; nE.color = 3066993;
-            if(nE.fields.length >= 4) { nE.fields[3].name = "🟢 處理狀態"; nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接單`; }
+            let nE = JSON.parse(JSON.stringify(order.embedData));
+            nE.color = 16751104; // 橙色：處理中
+            if(nE.fields.length >= 4) { 
+                nE.fields[3].name = "🟡 處理狀態"; 
+                nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接受，正在積極處理中...`; 
+            }
             fetch(`${order.webhookUrl}/messages/${order.messageId}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({embeds:[nE]}) });
         }
-        showToast("✅ 接單成功！業績已記入", "success");
+        showToast("✅ 已成功接單，請前往現場施工，完工後點擊「確認完成訂單」！", "success");
     }
 
+    // 員工核心功能：確認完成訂單，正式將分成計入系統並發送 Discord Webhook (完工時同步發送經修改後的金額與細項)
+    async function completeOrder(orderId) {
+        let order = ordersData[orderId];
+        if (!order || order.status !== 'processing') return showToast("訂單狀態異常", "error");
+        if (order.acceptedBy !== currentEmpId) return showToast("您並非此訂單的接單人", "error");
+
+        showCustomConfirm("確認完成訂單？", "點擊後代表此訂單服務已完工，系統將正式計入您的本週業績與分成薪資！", async () => {
+            await db.ref(`orders/${orderId}`).update({ 
+                status: 'completed',
+                completedAt: Date.now()
+            });
+
+            // 抓取修改過後的最新即時訂單快照，確保 Webhook 的內容完全一致
+            let latestOrder = ordersData[orderId] || order;
+
+            if (latestOrder.webhookUrl && latestOrder.messageId && latestOrder.embedData) {
+                let nE = JSON.parse(JSON.stringify(latestOrder.embedData));
+                nE.color = 3066993; // 綠色：完工
+                if(nE.fields.length >= 4) { 
+                    nE.fields[3].name = "🟢 處理狀態"; 
+                    nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 完工結算！`; 
+                }
+                // 同步將修改後的最終「服務明細」寫入 Webhook Embed
+                if (nE.fields.length >= 3 && nE.fields[2].name === "📋 服務明細") {
+                    nE.fields[2].value = "```\n" + (latestOrder.details || []).join("\n") + "\n```";
+                }
+                // 同步將修改後的最終「總金額」寫入 Webhook Embed
+                if (nE.fields.length >= 2 && nE.fields[1].name === "💰 總金額") {
+                    nE.fields[1].value = `**$${latestOrder.price}**`;
+                }
+                fetch(`${latestOrder.webhookUrl}/messages/${latestOrder.messageId}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({embeds:[nE]}) });
+            }
+            showToast("🎉 恭喜完工！本筆業績已成功記入帳戶！", "success");
+        });
+    }
+
+    // 道路救援：不需等待，直接在回報後轉為 completed 計入
     async function submitRoadside() {
         let locP = parseInt(document.getElementById('rs-plan').value), isD = document.getElementById('rs-danger').checked;
         let finalP = locP + (isD ? 150000 : 0), comm = Math.floor(finalP * 0.9);
         await db.ref('orders').push({
             orderNo: "RS" + await generateOrderNo(), timestamp: Date.now(), price: finalP,
-            status: 'accepted', acceptedBy: currentEmpId, commission: comm, type: 'roadside', details: ["道路救援出勤"]
+            status: 'completed', acceptedBy: currentEmpId, commission: comm, type: 'roadside', details: ["道路救援出勤"]
         });
-        showToast("救援紀錄已送出", "success");
+        showToast("救援記錄申報成功，已計入分成及本週營收！", "success");
     }
 
-    // 系統運算大核心
+    // 系統運算與 UI 渲染核心
     function refreshAllCalculations() {
         let weekStart = getWeekStartTimestamp(), now = Date.now();
         let bossTotal = 0, empStats = { count:0, amount:0, comm:0 }, payrolls = {};
@@ -816,9 +964,12 @@
         let oArr = Object.entries(ordersData).map(([id, d])=>({id,...d})).sort((a,b)=>a.timestamp-b.timestamp); // 待接由舊到新
         let oArrDesc = [...oArr].sort((a,b)=>b.timestamp-a.timestamp); // 歷史由新到舊
 
+        // 員工未接訂單大廳與處理中訂單的條列
         oArr.forEach(o => {
-            if(o.status==='pending') {
-                let cn = storeData[o.categoryId] ? storeData[o.categoryId].name : '未知';
+            let cn = storeData[o.categoryId] ? storeData[o.categoryId].name : '未知';
+            
+            // 待接狀態的訂單大廳
+            if(o.status === 'pending') {
                 phtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#222;">
                             <div style="width:100%; display:flex; justify-content:space-between;"><b>#${o.orderNo}</b><span style="color:#aaa;font-size:11px;">[${cn}]</span></div>
                             <div style="font-size:13px; color:#ddd;">總金額: <b style="color:var(--accent)">$${o.price}</b></div>
@@ -826,22 +977,85 @@
                             <button onclick="acceptOrder('${o.id}')" style="background:#5865F2; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer;">立即接單</button>
                             <button onclick="cancelOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">取消訂單</button>
                           </div>`;
+            } 
+            // 進行中狀態，且接單人是目前的登入員工 (新增即時刪除細項按鈕 ❌)
+            else if (o.status === 'processing' && o.acceptedBy === currentEmpId) {
+                let itemsListHtml = '';
+                if (o.details && o.details.length > 0) {
+                    itemsListHtml = o.details.map((item, idx) => {
+                        return `<li style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#ccc; width:100%; box-sizing:border-box;">
+                                    <span>• ${item}</span>
+                                    <span style="color:#e74c3c; cursor:pointer; font-weight:bold; margin-left:8px;" onclick="deleteOrderSubItem('${o.id}', ${idx})">❌ 刪除</span>
+                                </li>`;
+                    }).join('');
+                } else {
+                    itemsListHtml = '<li style="color:#888;">無訂購細項</li>';
+                }
+
+                phtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#2f3136; border: 2px solid var(--accent);">
+                            <div style="width:100%; display:flex; justify-content:space-between;"><b style="color:var(--accent)">#${o.orderNo} [處理中]</b><span style="color:#aaa;font-size:11px;">[${cn}]</span></div>
+                            <div style="font-size:13px; color:#fff; background:rgba(0,0,0,0.3); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
+                                👤 <b>客戶 Discord ID:</b> <span style="color:var(--accent)">${o.customerId || '未知'}</span><br>
+                                <div style="font-size:11px; color:#aaa; margin:5px 0 3px 0;">🛠️ 細項內容物調整與刪減：</div>
+                                <ul style="margin:5px 0 0 0; padding:0; font-size:12px; list-style-type:none; display:flex; flex-direction:column; gap:3px; width:100%;">
+                                    ${itemsListHtml}
+                                </ul>
+                            </div>
+                            <div style="font-size:13px; color:#ddd; width:100%; display:flex; justify-content:space-between;">
+                                <span>當前總額: <b style="color:var(--accent)">$${o.price}</b></span>
+                                <span>應得估計分成: <b style="color:#2ecc71">$${o.commission || 0}</b></span>
+                            </div>
+                            <button onclick="completeOrder('${o.id}')" style="background:#2ecc71; color:white; width:100%; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">確認完成訂單</button>
+                            <button onclick="cancelOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">放棄接單</button>
+                          </div>`;
             }
         });
 
+        // 歷史訂單列表渲染 - 含展開條列購買者 Discord ID 以及單項刪除 (第一張圖)
         oArrDesc.forEach(o => {
             if ((now - o.timestamp) <= 72*3600*1000) {
-                let badge = o.status==='pending' ? '<span style="color:#e74c3c">未接單</span>' : `<span style="color:#2ecc71">已接 (${empData[o.acceptedBy]?.nickname||'未知'})</span>`;
-                hhtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px;">
+                let badge = '';
+                if (o.status === 'pending') badge = '<span style="color:#e74c3c">未接單</span>';
+                else if (o.status === 'processing') badge = `<span style="color:#ff9900">接單處理中 (${empData[o.acceptedBy]?.nickname||'未知'})</span>`;
+                else badge = `<span style="color:#2ecc71">已完成 (${empData[o.acceptedBy]?.nickname||'未知'})</span>`;
+                
+                // 動態展示各個細項內容物，並加上單項刪除 ❌ 按鈕
+                let subItemsHtml = '';
+                if (o.details && o.details.length > 0) {
+                    subItemsHtml = o.details.map((item, idx) => {
+                        return `<div style="display:flex; justify-content:space-between; align-items:center; background:#222; padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#ccc;">
+                                    <span>${item}</span>
+                                    <span style="color:#e74c3c; cursor:pointer; font-weight:bold;" onclick="deleteOrderSubItem('${o.id}', ${idx})">❌ 刪除項目</span>
+                                </div>`;
+                    }).join('');
+                }
+
+                hhtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px; background:#1e1e1e;">
                             <div style="display:flex; justify-content:space-between; width:100%;"><b>#${o.orderNo}</b><span>${badge}</span></div>
-                            <div style="color:#aaa; font-size:11px;">${new Date(o.timestamp).toLocaleString()} | 總額: $${o.price}</div>
-                            <button class="del-btn" style="align-self:flex-end; margin-top:5px;" onclick="deleteOrder('${o.id}')">刪除紀錄</button>
+                            <div style="font-size:12px; color:#aaa; width:100%; border-bottom:1px solid #333; padding-bottom:5px;">
+                                👤 訂購者 Discord ID: <strong style="color:var(--accent)">${o.customerId || '未驗證'}</strong>
+                            </div>
+                            <div style="width:100%; margin:4px 0;">
+                                <span style="font-size:11px; color:#888;">🛠️ 細項內容物與刪減：</span>
+                                ${subItemsHtml}
+                            </div>
+                            <div style="color:#aaa; font-size:11px; width:100%; display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                                <span>時間: ${new Date(o.timestamp).toLocaleString()} | 總金額: <b style="color:var(--accent)">$${o.price}</b></span>
+                                <button class="del-btn" onclick="deleteOrder('${o.id}')">刪除整筆紀錄</button>
+                            </div>
                           </div>`;
             }
-            if(o.timestamp >= weekStart && o.status==='accepted') {
+            // 只有完成 (completed) 的訂單才納入本週結算與分成累積
+            if(o.timestamp >= weekStart && o.status === 'completed') {
                 bossTotal += o.price;
-                if(!payrolls[o.acceptedBy]) payrolls[o.acceptedBy] = 0;
-                payrolls[o.acceptedBy] += (o.commission || 0);
+                if(!payrolls[o.acceptedBy]) payrolls[o.acceptedBy] = { unpaidComm: 0, paidComm: 0, totalIncome: 0 };
+                
+                if (o.isPaid) {
+                    payrolls[o.acceptedBy].paidComm += (o.commission || 0);
+                } else {
+                    payrolls[o.acceptedBy].unpaidComm += (o.commission || 0);
+                    payrolls[o.acceptedBy].totalIncome += o.price; // 用於本週營業額入公款
+                }
                 
                 if(currentLoggedUserType==='emp' && o.acceptedBy===currentEmpId) {
                     empStats.count++; empStats.amount+=o.price; empStats.comm+=(o.commission||0);
@@ -849,12 +1063,12 @@
             }
         });
 
-        // 渲染更新
-        if(document.getElementById('emp-pending-list')) document.getElementById('emp-pending-list').innerHTML = phtml || '<p style="color:#666;font-size:12px;">大廳目前空空如也</p>';
-        if(document.getElementById('history-list')) document.getElementById('history-list').innerHTML = hhtml || '<p style="color:#666;font-size:12px;">72H內無紀錄</p>';
+        // 渲染更新至各個 DOM 節點
+        if(document.getElementById('emp-pending-list')) document.getElementById('emp-pending-list').innerHTML = phtml || '<p style="color:#666;font-size:12px;text-align:center;">目前大廳無任何可處理的訂單</p>';
+        if(document.getElementById('history-list')) document.getElementById('history-list').innerHTML = hhtml || '<p style="color:#666;font-size:12px;text-align:center;">72H內無紀錄</p>';
         
         if(document.getElementById('stat-count')) {
-            document.getElementById('stat-count').innerText = Object.values(ordersData).filter(o=>o.timestamp>=weekStart && o.status==='accepted').length;
+            document.getElementById('stat-count').innerText = Object.values(ordersData).filter(o=>o.timestamp>=weekStart && o.status==='completed').length;
             document.getElementById('stat-amount').innerText = `$${bossTotal}`;
         }
         if(document.getElementById('finance-weekly-income')) document.getElementById('finance-weekly-income').innerText = `$${bossTotal}`;
@@ -864,46 +1078,42 @@
             document.getElementById('emp-my-commission').innerText = `$${empStats.comm}`;
         }
 
-        // 薪資單渲染
-        let prHtml='', tPr=0;
-        for(let eid in payrolls){ let eI=empData[eid]||{nickname:'已刪除',role:'-'}; prHtml+=`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #333;padding:5px 0;"><span>${eI.nickname} <span style="color:#888;font-size:10px;">(${eI.role})</span></span><b style="color:var(--accent)">$${payrolls[eid]}</b></div>`; tPr+=payrolls[eid]; }
-        prHtml+=`<div style="text-align:right;margin-top:10px;">本週總應發: <b style="color:#e74c3c;font-size:16px;">$${tPr}</b></div>`;
-        if(document.getElementById('payroll-list')) document.getElementById('payroll-list').innerHTML = prHtml || '<span style="color:#666;font-size:12px;">本週尚無接單</span>';
-        
-        let bP = document.getElementById('btn-pay-salary');
-        let bU = document.getElementById('btn-unpay-salary');
-        if(bP) {
-            bP.dataset.amount = tPr;
-            bP.dataset.income = bossTotal;
-            if(bU) {
-                bU.dataset.amount = tPr;
-                bU.dataset.income = bossTotal;
-            }
+        // 薪資單渲染 - 個別員工分開結算與取消 (第二、三張圖)
+        let prHtml = '';
+        for (let eid in empData) {
+            let info = empData[eid];
+            let payData = payrolls[eid] || { unpaidComm: 0, paidComm: 0, totalIncome: 0 };
+            
+            // 是否本週已經進行個別結算
+            let isPaidThisWeek = paidWeeksData[weekStart]?.[eid]?.paid || false;
 
-            if(paidWeeksData[weekStart]) {
-                let paidInfo = paidWeeksData[weekStart];
-                let paidIncome = (typeof paidInfo === 'object' && paidInfo.income !== undefined) ? (parseInt(paidInfo.income) || 0) : bossTotal;
-                bP.innerText = "本週已結清，本週收入已入公款";
-                bP.style.background = "#555";
-                bP.disabled = true;
-                if(bU) {
-                    bU.style.display = "block";
-                    bU.disabled = false;
-                    bU.innerText = `取消結清並扣回公款 $${paidIncome}`;
+            if (payData.unpaidComm > 0 || payData.paidComm > 0 || isPaidThisWeek) {
+                let statusButtonHtml = '';
+                if (!isPaidThisWeek && payData.unpaidComm > 0) {
+                    statusButtonHtml = `<button onclick="paySingleEmployee('${eid}')" style="background:#e74c3c; color:white; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; width:100%; margin-top:5px;">個別結算並將本週收入加入公款</button>`;
+                } else if (isPaidThisWeek) {
+                    statusButtonHtml = `<button onclick="cancelPaySingleEmployee('${eid}')" style="background:#5865F2; color:white; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; width:100%; margin-top:5px;">取消結清並扣回公款</button>`;
                 }
-            } else {
-                bP.innerText = "結清薪資並將本週收入加入公款";
-                bP.style.background = "#e74c3c";
-                bP.disabled = false;
-                if(bU) {
-                    bU.style.display = "none";
-                    bU.disabled = true;
-                }
+
+                prHtml += `
+                    <div style="background:#222; padding:12px; border-radius:8px; margin-bottom:10px; border-left:4px solid var(--accent);">
+                        <div style="display:flex; justify-content:space-between; font-weight:bold;">
+                            <span>${info.nickname} (${info.role})</span>
+                            <span style="color:#2ecc71;">待發薪資: $${payData.unpaidComm}</span>
+                        </div>
+                        <div style="font-size:11px; color:#aaa; margin-top:3px; display:flex; justify-content:space-between;">
+                            <span>本週完成業績總額: $${payData.totalIncome}</span>
+                            <span>已發薪資: $${payData.paidComm}</span>
+                        </div>
+                        ${statusButtonHtml}
+                    </div>
+                `;
             }
         }
+        if(document.getElementById('payroll-list')) document.getElementById('payroll-list').innerHTML = prHtml || '<span style="color:#666;font-size:12px;display:block;text-align:center;">本週尚無完工結算紀錄</span>';
     }
 
-    // 原有類別編輯函式保留
+    // 原有類別編輯與 Webhook 設置函式
     function addCat() { let n=document.getElementById('nCatName').value,w=document.getElementById('nCatWeb').value; if(n&&w){ db.ref('xiangyi_shop').push({name:n,webhook:w}).then(()=>showToast('新增成功','success')); } }
     function addItem() { let id=document.getElementById('aCatSelect').value,n=document.getElementById('nItemName').value; if(!id||!n)return; let d={name:n,type:currentMode,order:Object.keys(storeData[id].items||{}).length}; if(currentMode==='single'||currentMode==='retail'){d.price=document.getElementById('nItemPrice').value; if(currentMode==='retail')d.max=document.getElementById('nItemMax').value;}else if(currentMode==='range'){d.min=document.getElementById('nPriceMin').value;d.max=document.getElementById('nPriceMax').value;} db.ref(`xiangyi_shop/${id}/items`).push(d).then(()=>showToast('上架成功','success')); }
     function deleteCategory(id) { showCustomConfirm("刪除分類？", "包含旗下項目", ()=>db.ref(`xiangyi_shop/${id}`).remove()); }
