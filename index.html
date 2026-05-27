@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v5.5</title>
+    <title>翔毅車業預定系統 v5.6</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -672,7 +672,7 @@
         });
     }
 
-    // 新增/修改：單個服務項目細項刪除，支持未確認完成 (processing) 及已完成訂單，實時動態縮減金額、抽成與公款
+    // 項目細項刪除，並即時動態縮減金額、抽成與公款
     function deleteOrderSubItem(orderId, itemIndex) {
         let o = ordersData[orderId];
         if (!o || !o.details) return;
@@ -683,7 +683,7 @@
         showCustomConfirm("刪減此服務細項？", "確定要將此細項從訂單中移除？總金額與分成將連動重算。", async () => {
             let itemStr = o.details[itemIndex];
             
-            // 從細項字串中動態提取金額，如 "基礎升級 ($100000)" -> 100000
+            // 從細項字串中動態提取金額，如 "機車 ($500000)" -> 500000
             let priceMatch = itemStr.match(/\$(\d+)/);
             let subtractedPrice = 0;
             if (priceMatch && priceMatch[1]) {
@@ -702,7 +702,7 @@
             let oldPrice = parseInt(o.price) || 0;
             let newPrice = Math.max(0, oldPrice - subtractedPrice);
 
-            // 重新計算對應職位的分成 (加入 processing 狀態以支持員工即時運算)
+            // 重新計算對應職位的分成 (支持 processing 狀態以支持員工即時運算)
             let newCommission = 0;
             if (o.status === 'accepted' || o.status === 'completed' || o.status === 'processing') {
                 let worker = empData[o.acceptedBy];
@@ -725,7 +725,7 @@
         });
     }
 
-    // 取消未接訂單：員工可在待接大廳直接取消，並同步更新 Discord Webhook 訊息
+    // 取消未接訂單
     async function cancelOrder(id) {
         let order = ordersData[id];
         if (!order) return showToast("訂單不存在", "error");
@@ -762,8 +762,8 @@
         let ws = getWeekStartTimestamp();
         let income = 0;
         Object.values(ordersData).forEach(order => {
-            // 注意：現在只有 completed (確認完成) 的訂單才計入本週總營收
-            if (order.timestamp >= ws && order.status === 'completed') {
+            // 注意：只有 completed 或 accepted 的訂單才計入本週總營收
+            if (order.timestamp >= ws && (order.status === 'completed' || order.status === 'accepted')) {
                 income += parseInt(order.price) || 0;
             }
         });
@@ -775,10 +775,10 @@
         let ws = getWeekStartTimestamp();
         let nickname = empData[empId]?.nickname || "員工";
 
-        // 計算該名員工本週尚未結算的 completed 訂單
+        // 計算該名員工本週尚未結算已完成的訂單 (相容 completed 與 accepted)
         let unpaidOrders = Object.entries(ordersData).filter(([id, o]) => {
             return o.timestamp >= ws && 
-                   o.status === 'completed' && 
+                   (o.status === 'completed' || o.status === 'accepted') && 
                    o.acceptedBy === empId && 
                    (!o.isPaid);
         });
@@ -787,7 +787,6 @@
             return showToast(`${nickname} 目前無待發薪資或無待結算營業額！`, "info");
         }
 
-        // 該名員工所完成的訂單總營收與分成
         let totalIncome = 0;
         let totalSalary = 0;
         unpaidOrders.forEach(([id, o]) => {
@@ -853,7 +852,7 @@
                     // 2. 將對應訂單的 isPaid 狀態標記取消
                     let updates = {};
                     Object.entries(ordersData).forEach(([id, o]) => {
-                        if (o.timestamp >= ws && o.status === 'completed' && o.acceptedBy === empId && o.isPaid) {
+                        if (o.timestamp >= ws && (o.status === 'completed' || o.status === 'accepted') && o.acceptedBy === empId && o.isPaid) {
                             updates[`orders/${id}/isPaid`] = null;
                         }
                     });
@@ -873,7 +872,7 @@
 
     // 員工核心功能
     async function acceptOrder(orderId) {
-        // 限制一：檢查員工此時是否已經有「進行中 (processing)」或「未確認完成」的訂單
+        // 限制一：檢查員工此時是否已經有「進行中 (processing)」的訂單
         let hasActiveOrder = Object.values(ordersData).some(o => {
             return o.acceptedBy === currentEmpId && o.status === 'processing';
         });
@@ -908,13 +907,14 @@
         showToast("✅ 已成功接單，請前往現場施工，完工後點擊「確認完成訂單」！", "success");
     }
 
-    // 員工核心功能：確認完成訂單，正式將分成計入系統並發送 Discord Webhook (完工時同步發送經修改後的金額與細項)
+    // 員工核心功能：確認完成訂單，正式將分成計入系統並發送 Discord Webhook
     async function completeOrder(orderId) {
         let order = ordersData[orderId];
         if (!order || order.status !== 'processing') return showToast("訂單狀態異常", "error");
         if (order.acceptedBy !== currentEmpId) return showToast("您並非此訂單的接單人", "error");
 
         showCustomConfirm("確認完成訂單？", "點擊後代表此訂單服務已完工，系統將正式計入您的本週業績與分成薪資！", async () => {
+            // ** 關鍵修復：這裡狀態必定寫入 completed **
             await db.ref(`orders/${orderId}`).update({ 
                 status: 'completed',
                 completedAt: Date.now()
@@ -944,7 +944,7 @@
         });
     }
 
-    // 道路救援：不需等待，直接在回報後轉為 completed 計入
+    // 道路救援：直接以 completed 完成計入
     async function submitRoadside() {
         let locP = parseInt(document.getElementById('rs-plan').value), isD = document.getElementById('rs-danger').checked;
         let finalP = locP + (isD ? 150000 : 0), comm = Math.floor(finalP * 0.9);
@@ -978,7 +978,7 @@
                             <button onclick="cancelOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">取消訂單</button>
                           </div>`;
             } 
-            // 進行中狀態，且接單人是目前的登入員工 (新增即時刪除細項按鈕 ❌)
+            // 進行中狀態，且接單人是目前的登入員工
             else if (o.status === 'processing' && o.acceptedBy === currentEmpId) {
                 let itemsListHtml = '';
                 if (o.details && o.details.length > 0) {
@@ -1011,7 +1011,7 @@
             }
         });
 
-        // 歷史訂單列表渲染 - 含展開條列購買者 Discord ID 以及單項刪除 (第一張圖)
+        // 歷史訂單列表渲染 - 含細項展示與刪除
         oArrDesc.forEach(o => {
             if ((now - o.timestamp) <= 72*3600*1000) {
                 let badge = '';
@@ -1019,7 +1019,6 @@
                 else if (o.status === 'processing') badge = `<span style="color:#ff9900">接單處理中 (${empData[o.acceptedBy]?.nickname||'未知'})</span>`;
                 else badge = `<span style="color:#2ecc71">已完成 (${empData[o.acceptedBy]?.nickname||'未知'})</span>`;
                 
-                // 動態展示各個細項內容物，並加上單項刪除 ❌ 按鈕
                 let subItemsHtml = '';
                 if (o.details && o.details.length > 0) {
                     subItemsHtml = o.details.map((item, idx) => {
@@ -1045,8 +1044,9 @@
                             </div>
                           </div>`;
             }
-            // 只有完成 (completed) 的訂單才納入本週結算與分成累積
-            if(o.timestamp >= weekStart && o.status === 'completed') {
+            
+            // ** 關鍵修復：這裡狀態判定相容 completed 與 accepted，保證新進員工不管是哪種狀態，皆能計入本週分成與業績數值 **
+            if(o.timestamp >= weekStart && (o.status === 'completed' || o.status === 'accepted')) {
                 bossTotal += o.price;
                 if(!payrolls[o.acceptedBy]) payrolls[o.acceptedBy] = { unpaidComm: 0, paidComm: 0, totalIncome: 0 };
                 
@@ -1068,7 +1068,8 @@
         if(document.getElementById('history-list')) document.getElementById('history-list').innerHTML = hhtml || '<p style="color:#666;font-size:12px;text-align:center;">72H內無紀錄</p>';
         
         if(document.getElementById('stat-count')) {
-            document.getElementById('stat-count').innerText = Object.values(ordersData).filter(o=>o.timestamp>=weekStart && o.status==='completed').length;
+            // ** 關鍵修復：接單統計處也同步對齊相容 completed/accepted **
+            document.getElementById('stat-count').innerText = Object.values(ordersData).filter(o=>o.timestamp>=weekStart && (o.status==='completed' || o.status==='accepted')).length;
             document.getElementById('stat-amount').innerText = `$${bossTotal}`;
         }
         if(document.getElementById('finance-weekly-income')) document.getElementById('finance-weekly-income').innerText = `$${bossTotal}`;
@@ -1078,7 +1079,7 @@
             document.getElementById('emp-my-commission').innerText = `$${empStats.comm}`;
         }
 
-        // 薪資單渲染 - 個別員工分開結算與取消 (第二、三張圖)
+        // 薪資單渲染 - 個別員工分開結算與取消
         let prHtml = '';
         for (let eid in empData) {
             let info = empData[eid];
