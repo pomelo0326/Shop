@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v5.7</title>
+    <title>翔毅車業預定系統 v5.9</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -168,7 +168,7 @@
             <button id="nav-btn-emp-roadside" onclick="switchPage('emp-roadside')">道路救援</button>
         </div>
 
-        <!-- 1. 老闆 - 預定系統管理 -->
+        <!-- 1. 老闆 - 項目管理 -->
         <div id="admin-page-manage" style="display:none;">
             <div class="cat-card">
                 <h4>建立分類</h4>
@@ -314,6 +314,9 @@
                 <p style="font-size:11px; color:#aaa; margin-top:10px; line-height:1.6;">
                     * 道路救援直接以「已確認完成」形式計入薪資與本週收入。<br>
                     * 道路救援分成一律固定為總價的 <b>90%</b>。
+                </p>
+                <p style="font-size:11px; color:#ff9900; margin-top:5px;">
+                    * 注意：新員工帳號接取並完工之訂單，現已全面修正並同步記錄業績與公款，請安心使用！
                 </p>
                 <button onclick="submitRoadside()" style="background:var(--accent); color:black; margin-top:15px; font-weight:bold;">確認出勤回報</button>
             </div>
@@ -587,7 +590,6 @@
         currentEmpId = Object.keys(empData).find(id => empData[id].username === u && empData[id].password === p);
         if (currentEmpId) {
             currentLoggedUserType = 'emp';
-            document.getElementById('emp-login-view').style.display='none';
             document.getElementById('admin-view').style.display='block';
             document.getElementById('nav-emp').style.display='flex';
             switchPage('emp-pending'); showToast(`${empData[currentEmpId].nickname} 歡迎回來！`, 'success');
@@ -686,13 +688,12 @@
         showCustomConfirm("刪減此服務細項？", "確定要將此細項從訂單中移除？總金額與分成將連動重算。", async () => {
             let itemStr = o.details[itemIndex];
             
-            // 從細項字串中動態提取金額，如 "機車 ($500000)" -> 500000
+            // 從細項字串中動態提取金額
             let priceMatch = itemStr.match(/\$(\d+)/);
             let subtractedPrice = 0;
             if (priceMatch && priceMatch[1]) {
                 subtractedPrice = parseInt(priceMatch[1]) || 0;
             } else {
-                // 如果是 retail 項目如 "引擎 x2 ($200000)"
                 let retailMatch = itemStr.match(/\(\$(\d+)\)/);
                 if (retailMatch && retailMatch[1]) {
                     subtractedPrice = parseInt(retailMatch[1]) || 0;
@@ -761,11 +762,49 @@
         });
     }
 
+    // 放棄接單：重置狀態為 pending，清空接單人，完美放回接單大廳
+    async function abandonOrder(id) {
+        let order = ordersData[id];
+        if (!order) return showToast("訂單不存在", "error");
+        if (order.status !== 'processing') return showToast("此訂單非進行中狀態，無法放棄", "error");
+
+        showCustomConfirm("確定要放棄此訂單？", "放棄後訂單將重新回到待接清單中，供其他同仁接單。", async () => {
+            try {
+                // 將訂單改回 pending，清空所有綁定的員工數值與分成
+                await db.ref(`orders/${id}`).update({
+                    status: 'pending',
+                    acceptedBy: null,
+                    commission: null,
+                    acceptedAt: null
+                });
+
+                // 同步將 Discord 上的訊息狀態回歸為等待接單中
+                if (order.webhookUrl && order.messageId && order.embedData) {
+                    let nE = JSON.parse(JSON.stringify(order.embedData));
+                    nE.color = 16751104; // 橙色邊框：回到未接狀態
+                    if (nE.fields && nE.fields.length >= 4) {
+                        nE.fields[3].name = "🔴 處理狀態";
+                        nE.fields[3].value = "等待接單中...";
+                    }
+                    await fetch(`${order.webhookUrl}/messages/${order.messageId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ embeds: [nE] })
+                    });
+                }
+
+                showToast("✅ 已放棄此訂單！已重新放回待接清單。", "success");
+            } catch (e) {
+                console.error(e);
+                showToast("放棄操作失敗，請聯繫老闆檢查系統！", "error");
+            }
+        });
+    }
+
     function getCurrentWeekIncome() {
         let ws = getWeekStartTimestamp();
         let income = 0;
         Object.values(ordersData).forEach(order => {
-            // 注意：只有 completed 或 accepted 的訂單才計入本週總營收
             if (order.timestamp >= ws && (order.status === 'completed' || order.status === 'accepted')) {
                 income += parseInt(order.price) || 0;
             }
@@ -778,7 +817,6 @@
         let ws = getWeekStartTimestamp();
         let nickname = empData[empId]?.nickname || "員工";
 
-        // 計算該名員工本週尚未結算已完成的訂單 (相容 completed 與 accepted)
         let unpaidOrders = Object.entries(ordersData).filter(([id, o]) => {
             return o.timestamp >= ws && 
                    (o.status === 'completed' || o.status === 'accepted') && 
@@ -802,17 +840,14 @@
             `將結算 ${nickname}。本週帶入公款之營業總額為 $${totalIncome}，實發員工薪資 $${totalSalary} (薪資不進入公款)。`,
             async () => {
                 try {
-                    // 1. 將該名員工本週創造的「總營業額」加入公款
                     let newBalance = (fundsData.balance || 0) + totalIncome;
                     await db.ref('funds/balance').set(newBalance);
 
-                    // 2. 將這些訂單標記為 isPaid: true 避免重複發放與結算
                     let updates = {};
                     unpaidOrders.forEach(([id, o]) => {
                         updates[`orders/${id}/isPaid`] = true;
                     });
                     
-                    // 3. 記錄到 paid_weeks，防止重複操作
                     updates[`paid_weeks/${ws}/${empId}`] = {
                         paid: true,
                         income: totalIncome,
@@ -848,11 +883,9 @@
             `將從公款中扣回 ${nickname} 結清入帳之本週營收 $${totalIncome}，並恢復薪資未結清。`,
             async () => {
                 try {
-                    // 1. 從公款中扣回該營業額
                     let newBalance = Math.max(0, (fundsData.balance || 0) - totalIncome);
                     await db.ref('funds/balance').set(newBalance);
 
-                    // 2. 將對應訂單的 isPaid 狀態標記取消
                     let updates = {};
                     Object.entries(ordersData).forEach(([id, o]) => {
                         if (o.timestamp >= ws && (o.status === 'completed' || o.status === 'accepted') && o.acceptedBy === empId && o.isPaid) {
@@ -860,7 +893,6 @@
                         }
                     });
 
-                    // 3. 移除該員工本週在 paid_weeks 節點下的結算記錄
                     await db.ref(`paid_weeks/${ws}/${empId}`).remove();
                     await db.ref().update(updates);
 
@@ -873,9 +905,8 @@
         );
     }
 
-    // 員工核心功能
+    // 員工接單大廳
     async function acceptOrder(orderId) {
-        // 限制一：檢查員工此時是否已經有「進行中 (processing)」的訂單
         let hasActiveOrder = Object.values(ordersData).some(o => {
             return o.acceptedBy === currentEmpId && o.status === 'processing';
         });
@@ -889,7 +920,6 @@
         let role = empData[currentEmpId]?.role || '技師', perm = rolesData[role] && rolesData[role][order.categoryId];
         if (!perm || !perm.canAccept) return showToast(`【${role}】無權限接取此類別`, "error");
 
-        // 僅將狀態設定為 'processing' (處理中)，此時不計入分成金額或營業額，直到點選「確認完成」
         let comm = Math.floor(order.price * (parseInt(perm.pct)||0) / 100);
         await db.ref(`orders/${orderId}`).update({ 
             status: 'processing', 
@@ -900,7 +930,7 @@
 
         if (order.webhookUrl && order.messageId && order.embedData) {
             let nE = JSON.parse(JSON.stringify(order.embedData));
-            nE.color = 16751104; // 橙色：處理中
+            nE.color = 16751104; 
             if(nE.fields.length >= 4) { 
                 nE.fields[3].name = "🟡 處理狀態"; 
                 nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 接受，正在積極處理中...`; 
@@ -910,34 +940,30 @@
         showToast("✅ 已成功接單，請前往現場施工，完工後點擊「確認完成訂單」！", "success");
     }
 
-    // 員工核心功能：確認完成訂單，正式將分成計入系統並發送 Discord Webhook
+    // 員工確認完工
     async function completeOrder(orderId) {
         let order = ordersData[orderId];
         if (!order || order.status !== 'processing') return showToast("訂單狀態異常", "error");
         if (order.acceptedBy !== currentEmpId) return showToast("您並非此訂單的接單人", "error");
 
         showCustomConfirm("確認完成訂單？", "點擊後代表此訂單服務已完工，系統將正式計入您的本週業績與分成薪資！", async () => {
-            // ** 關鍵修復：這裡狀態必定寫入 completed **
             await db.ref(`orders/${orderId}`).update({ 
                 status: 'completed',
                 completedAt: Date.now()
             });
 
-            // 抓取修改過後的最新即時訂單快照，確保 Webhook 的內容完全一致
             let latestOrder = ordersData[orderId] || order;
 
             if (latestOrder.webhookUrl && latestOrder.messageId && latestOrder.embedData) {
                 let nE = JSON.parse(JSON.stringify(latestOrder.embedData));
-                nE.color = 3066993; // 綠色：完工
+                nE.color = 3066993; 
                 if(nE.fields.length >= 4) { 
                     nE.fields[3].name = "🟢 處理狀態"; 
                     nE.fields[3].value = `已由 **${empData[currentEmpId].nickname}** 完工結算！`; 
                 }
-                // 同步將修改後的最終「服務明細」寫入 Webhook Embed
                 if (nE.fields.length >= 3 && nE.fields[2].name === "📋 服務明細") {
                     nE.fields[2].value = "```\n" + (latestOrder.details || []).join("\n") + "\n```";
                 }
-                // 同步將修改後的最終「總金額」寫入 Webhook Embed
                 if (nE.fields.length >= 2 && nE.fields[1].name === "💰 總金額") {
                     nE.fields[1].value = `**$${latestOrder.price}**`;
                 }
@@ -947,7 +973,7 @@
         });
     }
 
-    // 道路救援：直接以 completed 完成計入
+    // 道路救援出勤
     async function submitRoadside() {
         let locP = parseInt(document.getElementById('rs-plan').value), isD = document.getElementById('rs-danger').checked;
         let finalP = locP + (isD ? 150000 : 0), comm = Math.floor(finalP * 0.9);
@@ -958,20 +984,18 @@
         showToast("救援記錄申報成功，已計入分成及本週營收！", "success");
     }
 
-    // 系統運算與 UI 渲染核心
+    // 系統運算與 UI 渲染核心 (放棄接單按鈕正式改為 onclick="abandonOrder")
     function refreshAllCalculations() {
         let weekStart = getWeekStartTimestamp(), now = Date.now();
         let bossTotal = 0, empStats = { count:0, amount:0, comm:0 }, payrolls = {};
         let phtml = '', hhtml = '';
         
-        let oArr = Object.entries(ordersData).map(([id, d])=>({id,...d})).sort((a,b)=>a.timestamp-b.timestamp); // 待接由舊到新
-        let oArrDesc = [...oArr].sort((a,b)=>b.timestamp-a.timestamp); // 歷史由新到舊
+        let oArr = Object.entries(ordersData).map(([id, d])=>({id,...d})).sort((a,b)=>a.timestamp-b.timestamp); 
+        let oArrDesc = [...oArr].sort((a,b)=>b.timestamp-a.timestamp); 
 
-        // 員工未接訂單大廳與處理中訂單的條列
         oArr.forEach(o => {
             let cn = storeData[o.categoryId] ? storeData[o.categoryId].name : '未知';
             
-            // 待接狀態的訂單大廳
             if(o.status === 'pending') {
                 phtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#222;">
                             <div style="width:100%; display:flex; justify-content:space-between;"><b>#${o.orderNo}</b><span style="color:#aaa;font-size:11px;">[${cn}]</span></div>
@@ -981,7 +1005,6 @@
                             <button onclick="cancelOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">取消訂單</button>
                           </div>`;
             } 
-            // 進行中狀態，且接單人是目前的登入員工
             else if (o.status === 'processing' && o.acceptedBy === currentEmpId) {
                 let itemsListHtml = '';
                 if (o.details && o.details.length > 0) {
@@ -995,7 +1018,7 @@
                     itemsListHtml = '<li style="color:#888;">無訂購細項</li>';
                 }
 
-                // 優先顯示 Discord 伺服器暱稱 (customerName)
+                // 🌟關鍵修正：此處「放棄接單」按鈕呼叫對象由原本的 cancelOrder 改為全新的 abandonOrder！🌟
                 phtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#2f3136; border: 2px solid var(--accent);">
                             <div style="width:100%; display:flex; justify-content:space-between;"><b style="color:var(--accent)">#${o.orderNo} [處理中]</b><span style="color:#aaa;font-size:11px;">[${cn}]</span></div>
                             <div style="font-size:13px; color:#fff; background:rgba(0,0,0,0.3); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
@@ -1011,12 +1034,12 @@
                                 <span>應得估計分成: <b style="color:#2ecc71">$${o.commission || 0}</b></span>
                             </div>
                             <button onclick="completeOrder('${o.id}')" style="background:#2ecc71; color:white; width:100%; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">確認完成訂單</button>
-                            <button onclick="cancelOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">放棄接單</button>
+                            <button onclick="abandonOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">放棄接單</button>
                           </div>`;
             }
         });
 
-        // 歷史訂單列表渲染 - 含細項展示與刪除 (同步改為顯示客戶暱稱)
+        // 歷史訂單列表渲染
         oArrDesc.forEach(o => {
             if ((now - o.timestamp) <= 72*3600*1000) {
                 let badge = '';
@@ -1051,7 +1074,6 @@
                           </div>`;
             }
             
-            // ** 關鍵修復：這裡狀態判定相容 completed 與 accepted，保證新進員工不管是哪種狀態，皆能計入本週分成與業績數值 **
             if(o.timestamp >= weekStart && (o.status === 'completed' || o.status === 'accepted')) {
                 bossTotal += o.price;
                 if(!payrolls[o.acceptedBy]) payrolls[o.acceptedBy] = { unpaidComm: 0, paidComm: 0, totalIncome: 0 };
@@ -1060,7 +1082,7 @@
                     payrolls[o.acceptedBy].paidComm += (o.commission || 0);
                 } else {
                     payrolls[o.acceptedBy].unpaidComm += (o.commission || 0);
-                    payrolls[o.acceptedBy].totalIncome += o.price; // 用於本週營業額入公款
+                    payrolls[o.acceptedBy].totalIncome += o.price; 
                 }
                 
                 if(currentLoggedUserType==='emp' && o.acceptedBy===currentEmpId) {
@@ -1069,12 +1091,10 @@
             }
         });
 
-        // 渲染更新至各個 DOM 節點
         if(document.getElementById('emp-pending-list')) document.getElementById('emp-pending-list').innerHTML = phtml || '<p style="color:#666;font-size:12px;text-align:center;">目前大廳無任何可處理的訂單</p>';
         if(document.getElementById('history-list')) document.getElementById('history-list').innerHTML = hhtml || '<p style="color:#666;font-size:12px;text-align:center;">72H內無紀錄</p>';
         
         if(document.getElementById('stat-count')) {
-            // ** 關鍵修復：接單統計處也同步對齊相容 completed/accepted **
             document.getElementById('stat-count').innerText = Object.values(ordersData).filter(o=>o.timestamp>=weekStart && (o.status==='completed' || o.status==='accepted')).length;
             document.getElementById('stat-amount').innerText = `$${bossTotal}`;
         }
@@ -1085,13 +1105,11 @@
             document.getElementById('emp-my-commission').innerText = `$${empStats.comm}`;
         }
 
-        // 薪資單渲染 - 個別員工分開結算與取消
+        // 薪資單渲染
         let prHtml = '';
         for (let eid in empData) {
             let info = empData[eid];
             let payData = payrolls[eid] || { unpaidComm: 0, paidComm: 0, totalIncome: 0 };
-            
-            // 是否本週已經進行個別結算
             let isPaidThisWeek = paidWeeksData[weekStart]?.[eid]?.paid || false;
 
             if (payData.unpaidComm > 0 || payData.paidComm > 0 || isPaidThisWeek) {
