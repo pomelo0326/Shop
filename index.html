@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v5.6</title>
+    <title>翔毅車業預定系統 v5.7</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -539,10 +539,12 @@
             });
             let msgData = await res.json();
             
-            // 寫入 Orders 資料庫 (狀態：未接單)
+            // 寫入 Orders 資料庫 (狀態：未接單) (同時紀錄 Discord 顯示名稱，若無則用一般帳號名稱)
             await db.ref('orders').push({
                 orderNo: orderNo, timestamp: Date.now(), price: parseInt(finalP) || 0,
-                categoryId: cid, details: details, customerId: userData.id,
+                categoryId: cid, details: details, 
+                customerId: userData.id,
+                customerName: userData.global_name || userData.username || '未知客戶',
                 status: 'pending', messageId: msgData.id, webhookUrl: webhookUrl, embedData: embedPayload
             });
 
@@ -560,7 +562,8 @@
     
     function switchPage(pageId) {
         ['manage','stats','employees','roles','finance','history','emp-pending','emp-stats','emp-roadside'].forEach(p => {
-            let el = document.getElementById(`admin-page-${p}`), btn = document.getElementById(`nav-btn-${p}`);
+            let el = document.getElementById(`admin-page-${p}`);
+            let btn = document.getElementById(`nav-btn-${p}`);
             if(el) el.style.display = 'none';
             if(btn) { btn.style.background = 'transparent'; btn.style.color = 'white'; }
         });
@@ -992,10 +995,12 @@
                     itemsListHtml = '<li style="color:#888;">無訂購細項</li>';
                 }
 
+                // 優先顯示 Discord 伺服器暱稱 (customerName)
                 phtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#2f3136; border: 2px solid var(--accent);">
                             <div style="width:100%; display:flex; justify-content:space-between;"><b style="color:var(--accent)">#${o.orderNo} [處理中]</b><span style="color:#aaa;font-size:11px;">[${cn}]</span></div>
                             <div style="font-size:13px; color:#fff; background:rgba(0,0,0,0.3); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
-                                👤 <b>客戶 Discord ID:</b> <span style="color:var(--accent)">${o.customerId || '未知'}</span><br>
+                                👤 <b>客戶名稱:</b> <span style="color:var(--accent); font-weight:bold;">${o.customerName || '未錄入'}</span> 
+                                <span style="font-size:10px; color:#888;">(ID: ${o.customerId || '未知'})</span><br>
                                 <div style="font-size:11px; color:#aaa; margin:5px 0 3px 0;">🛠️ 細項內容物調整與刪減：</div>
                                 <ul style="margin:5px 0 0 0; padding:0; font-size:12px; list-style-type:none; display:flex; flex-direction:column; gap:3px; width:100%;">
                                     ${itemsListHtml}
@@ -1011,7 +1016,7 @@
             }
         });
 
-        // 歷史訂單列表渲染 - 含細項展示與刪除
+        // 歷史訂單列表渲染 - 含細項展示與刪除 (同步改為顯示客戶暱稱)
         oArrDesc.forEach(o => {
             if ((now - o.timestamp) <= 72*3600*1000) {
                 let badge = '';
@@ -1032,7 +1037,8 @@
                 hhtml += `<div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px; background:#1e1e1e;">
                             <div style="display:flex; justify-content:space-between; width:100%;"><b>#${o.orderNo}</b><span>${badge}</span></div>
                             <div style="font-size:12px; color:#aaa; width:100%; border-bottom:1px solid #333; padding-bottom:5px;">
-                                👤 訂購者 Discord ID: <strong style="color:var(--accent)">${o.customerId || '未驗證'}</strong>
+                                👤 訂購者名稱: <strong style="color:var(--accent)">${o.customerName || '未驗證'}</strong> 
+                                <span style="font-size:10px; color:#666;">(ID: ${o.customerId || '未知'})</span>
                             </div>
                             <div style="width:100%; margin:4px 0;">
                                 <span style="font-size:11px; color:#888;">🛠️ 細項內容物與刪減：</span>
