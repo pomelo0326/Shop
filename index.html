@@ -380,6 +380,22 @@
     let currentLoggedUserType = null; // 'boss' or 'emp'
     let currentEmpId = null;
 
+    // 產生訂單編號
+    async function generateOrderNo() {
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+        const countRef = db.ref(`order_counts/${dateStr}`);
+        
+        let count = 1;
+        const snapshot = await countRef.once('value');
+        if (snapshot.exists()) {
+            count = snapshot.val() + 1;
+        }
+        await countRef.set(count);
+        return `${dateStr}${count.toString().padStart(4, '0')}`;
+    }
+
+
     // 工具函式：吐司通知
     function showToast(msg, type = 'info') {
         const container = document.getElementById('toast-container');
@@ -708,15 +724,28 @@
             newOrder.embedData = embedPayload;
             newOrder.webhookUrl = webhookUrl;
 
-            // 先發送 Webhook 取得 Message ID
-            if (webhookUrl) {
-                let res = await fetch(webhookUrl + '?wait=true', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: "翔毅車業預定系統", embeds: [embedPayload] })
-                });
-                let msgData = await res.json();
-                newOrder.messageId = msgData.id;
+            // 先發送 Webhook 取得 Message ID，加入錯誤處理，不阻擋寫入資料庫
+            if (webhookUrl && webhookUrl.trim() !== '') {
+                try {
+                    let res = await fetch(webhookUrl + '?wait=true', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: "翔毅車業預定系統", embeds: [embedPayload] })
+                    });
+                    
+                    if (res.ok) {
+                        let msgData = await res.json();
+                        newOrder.messageId = msgData.id;
+                    } else {
+                         console.error("Webhook 發送失敗:", res.status, res.statusText);
+                         showToast("Webhook 發送失敗，但訂單已建立。", "error");
+                    }
+                } catch (webhookError) {
+                     console.error("Webhook 請求錯誤:", webhookError);
+                     showToast("Webhook 請求錯誤，但訂單已建立。", "error");
+                }
+            } else {
+                console.warn("未設定 Webhook URL");
             }
             
             // 寫入資料庫
@@ -727,7 +756,7 @@
 
         } catch (error) {
             console.error("送出訂單錯誤:", error);
-            showToast("系統發生錯誤或 Webhook 異常，送出失敗", "error");
+            showToast("系統發生錯誤，送出失敗", "error");
             document.getElementById('submit-btn').disabled = false;
             document.getElementById('submit-btn').innerText = '送出預定';
         }
@@ -739,7 +768,7 @@
     
     function authAdmin() {
         let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
-        if (u === pomelo === '0326') { currentLoggedUserType = 'boss'; currentEmpId = 'boss'; showToast("👑 老闆登入成功", "success"); enterAdmin(); }
+        if (u === 'pomelo' && p === '0326') { currentLoggedUserType = 'boss'; currentEmpId = 'boss'; showToast("👑 老闆登入成功", "success"); enterAdmin(); }
         else { showToast("帳號或密碼錯誤", "error"); }
     }
     
