@@ -648,19 +648,34 @@
         document.getElementById('submit-btn').disabled = true;
         document.getElementById('submit-btn').innerText = '預定送出中...';
         
-            let webhookUrl = storeData[cid].webhook;
-            let embedPayload = {
-                title: `🆕 新預定單 #${orderNo}`, color: 16751104,
-                fields: [
-                    { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
-                    { name: "💰 總金額", value: `**$${finalP}**`, inline: true },
-                    { name: "📋 服務明細", value: "```\n" + details.join("\n") + "\n```" },
-                    { name: "🔴 處理狀態", value: "等待接單中..." }
-                ], footer: { text: "翔毅車業 · 預訂系統" }, timestamp: new Date().toISOString()
-            };
-            
-            let embed = { title: `🔔 新預定單來臨 [${cat.name}]`, color: 5793266, fields: fields, timestamp: new Date().toISOString(), footer: { text: `訂單 ID: ${newOrder.id}` } };
-            if(cat.webhook) { fetch(cat.webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [embed] }) }).catch(e=>console.log(e)); }
+// 1. 將新版的選取項目 (selectedItems) 陣列，轉換成舊版所需的文字格式
+let detailsStr = selectedItems.map(item => `${item.name}  ($${item.calcPrice})`).join("\n");
+
+// 2. 建立 Discord Webhook 的 Payload (恢復原本的並排與程式碼區塊排版)
+let embedPayload = {
+    title: `🆕 新預定單 #${newOrder.id}`, // 換成新版的訂單 ID 變數
+    color: 16751104,
+    fields: [
+        { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
+        { name: "💰 總金額", value: `**$${computedPrice}**`, inline: true }, // 換成新版的總金額變數
+        { name: "📋 服務明細", value: "```\n" + detailsStr + "\n```" }, // 放入剛剛轉換好的明細字串
+        { name: "🔴 處理狀態", value: "等待接單中..." }
+    ],
+    footer: { text: "翔毅車業・預訂系統" },
+    timestamp: new Date().toISOString()
+};
+
+// 3. 發送 Webhook 至 Discord
+if (cat.webhook) {
+    fetch(cat.webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username: "翔毅車業預定系統", // 加上這行，恢復原本的發送者名稱
+            embeds: [embedPayload]      // 確保這裡發送的是 embedPayload
+        })
+    }).catch(e => console.log(e));
+}
             
             setTimeout(() => { location.reload(); }, 2000);
         }).catch(err => { showToast("系統發生錯誤，送出失敗", "error"); document.getElementById('submit-btn').disabled = false; document.getElementById('submit-btn').innerText = '送出預定'; });
