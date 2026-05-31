@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v5.9.1</title>
+    <title>翔毅車業預定系統</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -395,7 +395,6 @@
         return `${dateStr}${count.toString().padStart(4, '0')}`;
     }
 
-
     // 工具函式：吐司通知
     function showToast(msg, type = 'info') {
         const container = document.getElementById('toast-container');
@@ -467,7 +466,7 @@
         // DB 監聽
         db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
         db.ref('employees').on('value', s => { empData = s.val() || {}; refreshEmpUI(); refreshAllCalculations(); });
-        db.ref('roles').on('value', s => { rolesData = s.val() || {}; });
+        db.ref('roles').on('value', s => { rolesData = s.val() || {}; refreshAllCalculations(); }); // 加入 refresh
         db.ref('orders').on('value', s => { ordersData = s.val() || {}; refreshAllCalculations(); });
         db.ref('funds').on('value', s => { fundsData = s.val() || {balance: 0}; refreshFinanceUI(); });
         db.ref('expenses').on('value', s => { expensesData = s.val() || {}; refreshFinanceUI(); });
@@ -654,7 +653,7 @@
                 
                 // 確保欄位長度足夠並強制寫入更新
                 if (nE.fields.length >= 4) {
-                    nE.fields[3].name = isCancel ? "🔴 處理狀態" : (statusStr === "等待接單中..." ? "🔴 處理狀態" : (statusStr.includes("完工") ? "🟢 處理狀態" : "🟡 處理狀態"));
+                    nE.fields[3].name = isCancel ? "❌ 處理狀態" : (statusStr === "待接訂單" ? "🔴 處理狀態" : (statusStr.includes("完成") ? "🟢 處理狀態" : "🟡 處理狀態"));
                     nE.fields[3].value = statusStr;
                 }
                 if (nE.fields.length >= 5) {
@@ -674,7 +673,7 @@
         }
     }
 
-    // 👉 更新 sendOrder，修復 Webhook 發送異常
+    // 👉 訂單送出模組
     async function sendOrder() {
         if (!userData) { showToast("請先點擊上方按鈕，完成 Discord 帳號聯動驗證後再送出預定！", "error"); return; }
         let catId = document.getElementById('pCat').value; if (!catId) { showToast("請選擇業務類別", "error"); return; }
@@ -742,7 +741,7 @@
                     { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
                     { name: "💰 總金額", value: `**$${computedPrice.toLocaleString()}**`, inline: true },
                     { name: "📋 服務明細", value: "```\n" + detailsStrForEmbed + "\n```" },
-                    { name: "🔴 處理狀態", value: "等待接單中..." },
+                    { name: "🔴 處理狀態", value: "待接訂單" },
                     { name: "🛠️ 接單員工", value: "尚未接單" }
                 ],
                 footer: { text: "翔毅車業・預訂系統" },
@@ -882,7 +881,7 @@
 
     function deleteEmployee(id) { if (confirm("確定要把該名員工開除並刪除帳號個資嗎？")) { db.ref('employees/' + id).remove().then(() => showToast("員工移除成功", "success")); } }
 
-    // 職位接單權限管理 (修正支援不同類別分別設定)
+    // 職位接單權限管理
     function loadRolePerms() {
         let r = document.getElementById('role-select').value, container = document.getElementById('role-perms-container');
         container.innerHTML = '<p style="font-size:12px; color:#ff9900; margin:5px 0;">勾選允許此職位接單開工的分類權限與分成比例：</p>';
@@ -944,28 +943,29 @@
             let pData = eRole ? (rolesData[eRole] || {}) : {};
             let catPerm = pData[o.categoryId] || {};
             
-            // 1. 處理待接單大廳
+            // 1. 處理待接單大廳 (所有員工皆可看到訂單，但權限不足按鈕禁用)
             if (o.status === 'pending') {
                 if (currentLoggedUserType === 'emp') {
-                    // 若此員工擁有該分類的允許接單權限，才顯示
-                    if (catPerm.canAccept) {
-                        pendingListHtml += `
-                            <div class="stat-history" style="border-left-color:var(--accent);">
-                                <div style="display:flex; align-items:center; justify-content:space-between;">
-                                    <div><b>${o.categoryName}</b> - ${o.customerName || o.discordName}</div>
-                                    <div style="display:flex; gap:5px;">
-                                        <button onclick="takeOrder('${o.id}')" style="width:auto; margin:0; padding:4px 10px; background:var(--accent); color:black; font-weight:bold; font-size:11px;">立刻接單</button>
-                                        <button onclick="cancelOrder('${o.id}')" style="width:auto; margin:0; padding:4px 10px; background:#c0392b; color:white; font-weight:bold; font-size:11px;">取消訂單</button>
-                                    </div>
+                    let canTakeBtn = catPerm.canAccept 
+                        ? `<button onclick="takeOrder('${o.id}')" style="width:auto; margin:0; padding:4px 10px; background:var(--accent); color:black; font-weight:bold; font-size:11px;">立刻接單</button>`
+                        : `<span style="font-size:11px; color:#e74c3c; font-weight:bold; background:rgba(231,76,60,0.2); padding:4px 10px; border-radius:4px;">無接單權限</span>`;
+
+                    pendingListHtml += `
+                        <div class="stat-history" style="border-left-color:var(--accent);">
+                            <div style="display:flex; align-items:center; justify-content:space-between;">
+                                <div><b>${o.categoryName}</b> - ${o.customerName || o.discordName}</div>
+                                <div style="display:flex; gap:5px; align-items:center;">
+                                    ${canTakeBtn}
+                                    <button onclick="cancelOrder('${o.id}')" style="width:auto; margin:0; padding:4px 10px; background:#c0392b; color:white; font-weight:bold; font-size:11px;">取消訂單</button>
                                 </div>
-                                <div style="margin-top:5px; font-size:11px; color:#aaa;">項目: ${o.details ? o.details.join(', ') : o.items?.map(i=>i.name).join(', ')}</div>
-                                <div style="font-size:12px; color:var(--accent); font-weight:bold; margin-top:3px;">估價: $${(o.totalPrice || o.price || 0).toLocaleString()}</div>
                             </div>
-                        `;
-                    }
+                            <div style="margin-top:5px; font-size:11px; color:#aaa;">項目: ${o.details ? o.details.join(', ') : o.items?.map(i=>i.name).join(', ')}</div>
+                            <div style="font-size:12px; color:var(--accent); font-weight:bold; margin-top:3px;">估價: $${(o.totalPrice || o.price || 0).toLocaleString()}</div>
+                        </div>
+                    `;
                 }
             } else if (o.status === 'processing' && o.mechanicId === currentEmpId) {
-                // 處理中訂單顯示在員工大廳，並附上放棄接單按鈕 (abandonOrder)
+                // 處理中訂單顯示在員工大廳，並附上放棄接單按鈕
                 let itemsListHtml = '';
                 if (o.details && o.details.length > 0) {
                     itemsListHtml = o.details.map((item, idx) => {
@@ -1046,7 +1046,6 @@
                     weeklyIncome += (priceToUse - commAmount);
                 }
                 
-                // 歷史清單：包含所有 72 小時內的狀態 (修正老闆看不到 pending/processing 的問題)
                 if (currentLoggedUserType === 'emp' && (o.mechanicId === currentEmpId || o.acceptedBy === currentEmpId) && t >= weekStart) {
                     myCount++;
                     myAmount += priceToUse;
@@ -1054,7 +1053,7 @@
                 }
             }
             
-            // 老闆的 72H 歷史大廳：不再限制 status，只要是 72H 內通通顯示
+            // 老闆的 72H 歷史大廳
             if (now - (o.timestamp || 0) <= RETAIN_TIME_MS) {
                 let badge = '';
                 let mName = o.mechanicName || (empData[o.acceptedBy || o.mechanicId]?.nickname) || '尚未接單';
@@ -1281,7 +1280,7 @@
         });
     }
 
-    // 員工大廳接單動作 (修正類別權限與分成判斷)
+    // 員工大廳接單動作 
     function takeOrder(id) {
         let e = empData[currentEmpId];
         let o = ordersData[id];
@@ -1305,7 +1304,7 @@
             acceptedAt: Date.now()
         }).then(() => {
             showToast("成功接單！請前往預約客戶車輛現場施工。", "success");
-            updateDiscordStatus(o, "正在處理中...", 3447003, e.nickname);
+            updateDiscordStatus(o, "訂單處理中", 16766720, e.nickname);
         });
     }
 
@@ -1325,7 +1324,7 @@
                 db.ref('funds/balance').set(currentBalance + finalPrice).then(() => {
                     showToast("🎉 完工報告回報成功！公款已即時入庫。", "success");
                     let latestOrder = ordersData[id] || o;
-                    updateDiscordStatus(latestOrder, "✅ 已完工結算！", 3066993, latestOrder.mechanicName || empData[currentEmpId].nickname);
+                    updateDiscordStatus(latestOrder, "訂單已完成", 3066993, latestOrder.mechanicName || empData[currentEmpId].nickname);
                     closeModal();
                 });
             });
@@ -1339,8 +1338,8 @@
         if (!order) return;
         showCustomConfirm("確定要放棄此訂單？", "放棄後訂單將重新回到待接清單中，供其他同仁接單。", async () => {
             try {
+                await updateDiscordStatus(order, "待接訂單", 16751104, "尚未接單");
                 await db.ref(`orders/${id}`).update({ status: 'pending', acceptedBy: null, mechanicId: null, mechanicName: null, commission: null, acceptedAt: null });
-                updateDiscordStatus(order, "等待接單中...", 16751104, "尚未接單");
                 showToast("✅ 已放棄此訂單！已重新放回待接清單。", "success");
             } catch (e) {
                 showToast("放棄操作失敗，請聯繫老闆檢查系統！", "error");
@@ -1353,7 +1352,7 @@
         if (!order) return;
         showCustomConfirm("取消此訂單？", "此操作會將訂單從清單移除，並同步標記 Discord 訊息為已取消。", async () => {
             try {
-                updateDiscordStatus(order, "❌ 訂單已由員工/老闆取消", 15548997, "無", true);
+                await updateDiscordStatus(order, "訂單已取消", 15548997, "無", true);
                 await db.ref(`orders/${id}`).remove();
                 showToast("訂單已順利取消", "success");
             } catch (e) {
@@ -1412,7 +1411,7 @@
         db.ref('funds/balance').set(currentBalance - deduction).then(() => {
             db.ref('orders/' + orderId).remove().then(() => { 
                 showToast("訂單已強制剔除，公款盈餘已倒扣校正完畢。", "success"); 
-                updateDiscordStatus(o, "❌ 訂單遭強制剔除撤銷", 15548997, "無", true);
+                updateDiscordStatus(o, "訂單已取消", 15548997, "無", true);
             });
         });
     }
