@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v6.2</title>
+    <title>翔毅車業預定系統 v6.3</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -261,7 +261,6 @@
                     <div id="expense-list" style="margin-top:10px; font-size:12px; max-height:100px; overflow-y:auto; border:1px solid #333; padding:5px; border-radius:4px;"></div>
                 </div>
 
-                <!-- 💥 薪資結算大廳全面升級分流 💥 -->
                 <div class="stat-box" style="margin-top:15px; border-color:#e74c3c;">
                     <h5 style="margin:0 0 5px 0; color:#e74c3c;">💸 個人薪資結算大廳</h5>
                     <p style="font-size:11px; color:#aaa; margin:0 0 10px 0;">計算週期: 週六 00:00 ~ 週五 23:59</p>
@@ -446,7 +445,7 @@
                 document.getElementById('user-display').style.display = 'flex'; 
                 document.getElementById('user-name').innerText = res.username; 
                 document.getElementById('user-id-display').innerText = `ID: ${res.id}`; 
-            });
+            }).catch(e => console.error("Discord Login Error:", e));
         }
         document.getElementById('new-emp-role').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
         document.getElementById('role-select').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
@@ -464,7 +463,7 @@
         window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
     }
 
-    // 計算總價 - 強制數值轉換防呆
+    // 計算總價 (修正金額為純數字計算，並在畫面上顯示 $ 號)
     function calcTotalCost() {
         let catId = document.getElementById('pCat').value; if (!catId) return;
         let cat = storeData[catId], total = 0, hintHtml = '<b>📌 計價細目明細：</b><br>';
@@ -495,37 +494,53 @@
         if (hasChecked) { 
             hintEl.innerHTML = hintHtml + `-----------------------<br>💰 <b>目前估計總計金額：$${total.toLocaleString()}</b>`; 
             hintEl.style.display = 'block'; 
-            document.getElementById('pPrice').value = total; // 儲存純數值
+            document.getElementById('pPrice').value = `$${total.toLocaleString()}`; 
         }
         else { hintEl.style.display = 'none'; document.getElementById('pPrice').value = ''; }
     }
 
-    // --- Discord Webhook 狀態更新核心模組 ---
-    async function updateDiscordWebhook(order, statusText, color, mechanicName = "尚未接單") {
+    // --- Discord Webhook 狀態完美同步模組 (支援討論串網址) ---
+    async function updateDiscordWebhook(order, statusText, color, mechanicName) {
         if (!order.webhookUrl || !order.messageId || !order.embedData) return;
         try {
             let embed = JSON.parse(JSON.stringify(order.embedData));
             embed.color = color;
             
-            let statusField = embed.fields.find(f => f.name.includes("處理狀態"));
+            let statusField = null;
+            for(let i=0; i<embed.fields.length; i++) {
+                if(embed.fields[i].name.indexOf("處理狀態") !== -1) {
+                    statusField = embed.fields[i]; break;
+                }
+            }
             if (statusField) {
                 statusField.value = statusText;
-                if(statusText.includes("取消") || statusText.includes("刪除")) statusField.name = "❌ 處理狀態";
-                else if(statusText.includes("完成")) statusField.name = "🟢 處理狀態";
-                else if(statusText.includes("處理中")) statusField.name = "🟡 處理狀態";
+                if(statusText.indexOf("取消") !== -1 || statusText.indexOf("剔除") !== -1) statusField.name = "❌ 處理狀態";
+                else if(statusText.indexOf("完成") !== -1) statusField.name = "🟢 處理狀態";
+                else if(statusText.indexOf("處理中") !== -1) statusField.name = "🟡 處理狀態";
                 else statusField.name = "🔴 處理狀態";
             } else {
                 embed.fields.push({ name: "🔴 處理狀態", value: statusText });
             }
 
-            let empField = embed.fields.find(f => f.name.includes("接單員工"));
+            let empField = null;
+            for(let i=0; i<embed.fields.length; i++) {
+                if(embed.fields[i].name.indexOf("接單員工") !== -1) {
+                    empField = embed.fields[i]; break;
+                }
+            }
             if (empField) {
-                empField.value = mechanicName;
+                empField.value = mechanicName || "尚未接單";
             } else {
-                embed.fields.push({ name: "🛠️ 接單員工", value: mechanicName, inline: true });
+                embed.fields.push({ name: "🛠️ 接單員工", value: mechanicName || "尚未接單", inline: true });
             }
 
-            await fetch(`${order.webhookUrl}/messages/${order.messageId}`, {
+            // 完美處理包含 thread_id 的 Discord Webhook 網址
+            let urlParts = order.webhookUrl.split('?');
+            let baseUrl = urlParts[0];
+            let queryParams = urlParts.length > 1 ? ('?' + urlParts[1]) : '';
+            let patchUrl = baseUrl + '/messages/' + order.messageId + queryParams;
+            
+            await fetch(patchUrl, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ embeds: [embed] })
@@ -535,9 +550,9 @@
         }
     }
 
-    // 訂單送出
+    // 訂單送出模組
     async function sendOrder() {
-        if (!userData) { showToast("請先點擊上方按鈕驗證 Discord！", "error"); return; }
+        if (!userData) { showToast("請先點擊上方按鈕，完成 Discord 帳號聯動驗證後再送出預定！", "error"); return; }
         let catId = document.getElementById('pCat').value; if (!catId) { showToast("請選擇業務類別", "error"); return; }
         let cat = storeData[catId], selectedItems = [], computedPrice = 0;
         
@@ -567,13 +582,12 @@
             const orderNo = await generateOrderNo();
             
             let detailsStrArray = selectedItems.map(i => {
-                let valStr = `$${i.calcPrice.toLocaleString()}`;
+                let valStr = `$${(Number(i.calcPrice)||0).toLocaleString()}`;
                 if (i.type==='retail') valStr += ` (數量: ${i.qty})`;
-                if (i.type==='range') valStr += ` (最高至 $${i.rangeMax.toLocaleString()})`;
-                if (i.type==='custom') valStr += ` (資產 $${i.customAssetVal.toLocaleString()})`;
+                if (i.type==='range') valStr += ` (最高至 $${(Number(i.rangeMax)||0).toLocaleString()})`;
+                if (i.type==='custom') valStr += ` (資產 $${(Number(i.customAssetVal)||0).toLocaleString()})`;
                 return `${i.name}  (${valStr})`;
             });
-            let detailsStrForEmbed = detailsStrArray.join("\n");
             
             let newOrder = {
                 id: 'ORD-' + Date.now(),
@@ -600,9 +614,9 @@
                 fields: [
                     { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
                     { name: "💰 總金額", value: `**$${computedPrice.toLocaleString()}**`, inline: true },
-                    { name: "📋 服務明細", value: "```\n" + detailsStrForEmbed + "\n```" },
+                    { name: "📋 服務明細", value: "```\n" + detailsStrArray.join("\n") + "\n```" },
                     { name: "🔴 處理狀態", value: "待接訂單" },
-                    { name: "🛠️ 接單員工", value: "尚未接單" }
+                    { name: "🛠️ 接單員工", value: "尚未接單", inline: true }
                 ],
                 footer: { text: "翔毅車業・預訂系統" },
                 timestamp: new Date().toISOString()
@@ -611,9 +625,15 @@
             newOrder.embedData = embedPayload;
             newOrder.webhookUrl = webhookUrl;
 
+            // 完美處理包含 thread_id 的 Discord Webhook 網址
             if (webhookUrl && webhookUrl.trim() !== '') {
                 try {
-                    let res = await fetch(webhookUrl + '?wait=true', {
+                    let urlParts = webhookUrl.split('?');
+                    let baseUrl = urlParts[0];
+                    let queryParams = urlParts.length > 1 ? ('&' + urlParts[1]) : '';
+                    let fetchUrl = baseUrl + '?wait=true' + queryParams;
+                    
+                    let res = await fetch(fetchUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username: "翔毅車業預定系統", embeds: [embedPayload] })
@@ -637,7 +657,6 @@
         }
     }
 
-    // 登入切換與驗證
     function showLogin(type) { 
         document.getElementById('player-view').style.display='none'; 
         if(type==='boss') {
@@ -649,17 +668,31 @@
         }
     }
     
+    // 修復強制帳號密碼登入
     function authAdmin() {
         let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
-        if (u === 'pomelo' && p === '0326') { currentLoggedUserType = 'boss'; currentEmpId = 'boss'; showToast("👑 老闆登入成功", "success"); enterAdmin(); }
-        else { showToast("帳號或密碼錯誤", "error"); }
+        if (u === 'pomelo' && p === '0326') { 
+            currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
+            showToast("👑 老闆登入成功", "success"); enterAdmin(); 
+        } else { 
+            showToast("帳號或密碼錯誤", "error"); 
+        }
     }
     
     function authEmployee() {
         let u = document.getElementById('eUser').value.trim(), p = document.getElementById('ePass').value;
-        let found = Object.entries(empData).find(([id, e]) => e.username === u && e.password === p);
-        if (found) { currentLoggedUserType = 'emp'; currentEmpId = found[0]; showToast(`🛠️ 歡迎回來，${found[1].nickname}`, "success"); enterAdmin(); }
-        else { showToast("員工帳密錯誤或不存在", "error"); }
+        let found = false;
+        for(let id in empData) {
+            if(empData[id] && empData[id].username === u && empData[id].password === p) {
+                found = true;
+                currentLoggedUserType = 'emp';
+                currentEmpId = id;
+                showToast(`🛠️ 歡迎回來，${empData[id].nickname}`, "success");
+                enterAdmin();
+                break;
+            }
+        }
+        if(!found) showToast("員工帳密錯誤或不存在", "error");
     }
 
     function enterAdmin() {
@@ -677,49 +710,9 @@
         if(targetPage) targetPage.style.display = 'block';
         let targetBtn = document.getElementById(`nav-btn-${page}`);
         if(targetBtn) targetBtn.classList.add('active');
-    }
-
-    // 項目與分類管理
-    function updateItems() {
-        let catId = document.getElementById('pCat').value, container = document.getElementById('item-list');
-        if (!catId) { container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center; padding:10px;">請先選擇類別</p>'; document.getElementById('calc-section').style.display = 'none'; return; }
-        let cat = storeData[catId]; container.innerHTML = '';
-        if (!cat.items || Object.keys(cat.items).length === 0) { container.innerHTML = '<p style="color:#888; font-size:12px; text-align:center; padding:10px;">此分類目前無項目</p>'; document.getElementById('calc-section').style.display = 'none'; return; }
         
-        let itemsArray = Object.entries(cat.items).map(([id, data]) => ({ id, ...data })).sort((a, b) => (a.order || 0) - (b.order || 0));
-        itemsArray.forEach(it => {
-            let pl = '';
-            if(it.type === 'single') pl = `$${(Number(it.price)||0).toLocaleString()}`;
-            else if(it.type === 'retail') pl = `$${(Number(it.price)||0).toLocaleString()} / 單位`;
-            else if(it.type === 'range') pl = `$${(Number(it.min)||0).toLocaleString()} ~ $${(Number(it.max)||0).toLocaleString()}`;
-            else pl = '自填總價之 10%';
-            
-            let extraUi = '';
-            if (it.type === 'retail') {
-                extraUi = `<div class="qty-control" id="qty-box-${it.id}"><button class="qty-btn" onclick="changeQty('${it.id}', -1, ${it.max || 99999})">-</button><input type="number" class="qty-input" id="qty-${it.id}" value="1" min="1" max="${it.max || 99999}" oninput="validateQty('${it.id}', ${it.max || 99999})"><button class="qty-btn" onclick="changeQty('${it.id}', 1, ${it.max || 99999})">+</button><span class="max-hint">${it.max ? `(上限 ${it.max})` : ''}</span></div>`;
-            } else if (it.type === 'custom') {
-                extraUi = `<div class="custom-price-input" id="custom-box-${it.id}"><label style="margin-top:0; color:#ff9900;">車輛購入總價值：</label><input type="number" id="custom-val-${it.id}" placeholder="請輸入金額" oninput="calcTotalCost()" style="margin-bottom:0;"></div>`;
-            }
-            container.innerHTML += `<div class="item-option"><label class="item-main" for="chk-${it.id}"><input type="checkbox" id="chk-${it.id}" value="${it.id}" onchange="toggleItemExtra('${it.id}', '${it.type}')"><span>${it.name}</span><span class="price-tag">${pl}</span></label>${extraUi}</div>`;
-        });
-        document.getElementById('calc-section').style.display = 'block';
-        calcTotalCost();
-    }
-
-    function toggleItemExtra(id, type) {
-        let chk = document.getElementById(`chk-${id}`).checked;
-        if (type === 'retail') document.getElementById(`qty-box-${id}`).style.display = chk ? 'flex' : 'none';
-        else if (type === 'custom') document.getElementById(`custom-box-${id}`).style.display = chk ? 'block' : 'none';
-        calcTotalCost();
-    }
-
-    function changeQty(id, delta, max) {
-        let el = document.getElementById(`qty-${id}`), nv = parseInt(el.value) + delta;
-        if (nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
-    }
-    function validateQty(id, max) {
-        let el = document.getElementById(`qty-${id}`), nv = parseInt(el.value);
-        if (isNaN(nv) || nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
+        // 老闆點開職位權限時強迫刷新載入最新狀態
+        if (page === 'roles') loadRolePerms(); 
     }
 
     function setPriceMode(mode) {
@@ -730,6 +723,34 @@
         document.getElementById('inputRange').style.display = (mode==='range') ? 'flex' : 'none';
         document.getElementById('nItemPrice').placeholder = (mode==='retail') ? '單位單價' : '單價';
     }
+
+    function addCat() {
+        let name = document.getElementById('nCatName').value.trim(), web = document.getElementById('nCatWeb').value.trim();
+        if (!name) return; let id = 'CAT-' + Date.now();
+        db.ref('xiangyi_shop/' + id).set({ name, webhook: web, items: {} }).then(() => { showToast("分類建立成功", "success"); document.getElementById('nCatName').value=''; document.getElementById('nCatWeb').value=''; });
+    }
+
+    function deleteCategory(catId) { if (confirm("確定要整層刪除此分類及底下所有商品嗎？此動作不可逆！")) { db.ref('xiangyi_shop/' + catId).remove().then(() => showToast("分類已連同項目徹底刪除", "success")); } }
+
+    function addItem() {
+        let catId = document.getElementById('aCatSelect').value; if (!catId) { alert("請選擇分類"); return; }
+        let name = document.getElementById('nItemName').value.trim(); if (!name) return;
+        let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999 };
+        
+        if (currentMode === 'single' || currentMode === 'retail') {
+            let p = Number(document.getElementById('nItemPrice').value) || 0; itemData.price = p;
+            if (currentMode === 'retail') { let m = document.getElementById('nItemMax').value; if (m) itemData.max = Number(m); }
+        } else if (currentMode === 'range') {
+            itemData.min = Number(document.getElementById('nPriceMin').value) || 0; itemData.max = Number(document.getElementById('nPriceMax').value) || 0;
+        }
+        db.ref(`xiangyi_shop/${catId}/items/${itemData.id}`).set(itemData).then(() => {
+            showToast("商品上架成功", "success"); document.getElementById('nItemName').value = '';
+            document.getElementById('nItemPrice').value = ''; document.getElementById('nItemMax').value = '';
+            document.getElementById('nPriceMin').value = ''; document.getElementById('nPriceMax').value = '';
+        });
+    }
+
+    function deleteItem(catId, itemId) { if(confirm("確定下架此項目嗎？")) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).remove().then(() => showToast("商品已下架", "success")); } }
 
     function refreshUI() {
         const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
@@ -751,7 +772,7 @@
             const itemListDiv = catDiv.querySelector('.sortable-list');
             const itemsArray = Object.entries(cat.items || {}).map(([id, data]) => ({ id, ...data })).sort((a, b) => (a.order || 0) - (b.order || 0));
             itemsArray.forEach(it => {
-                let pL = (it.type==='single') ? `$${it.price}` : (it.type==='retail') ? `$${it.price} (上限${it.max||'無'})` : (it.type==='range') ? `$${it.min}~$${it.max}` : '自填10%';
+                let pL = (it.type==='single') ? `$${(Number(it.price)||0).toLocaleString()}` : (it.type==='retail') ? `$${(Number(it.price)||0).toLocaleString()} (上限${it.max||'無'})` : (it.type==='range') ? `$${(Number(it.min)||0).toLocaleString()}~$${(Number(it.max)||0).toLocaleString()}` : '自填10%';
                 itemListDiv.innerHTML += `
                     <div class="item-row" data-id="${it.id}">
                         <div class="item-info"><span class="drag-handle">☰</span><b>${it.name}</b>&nbsp;<span style="color:#888">(${pL})</span></div>
@@ -781,21 +802,6 @@
         document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
     }
 
-    function addCat() { let n = document.getElementById('nCatName').value.trim(), w = document.getElementById('nCatWeb').value.trim(); if (!n) return; let id = 'CAT-' + Date.now(); db.ref('xiangyi_shop/' + id).set({ name: n, webhook: w, items: {} }).then(() => { showToast("分類建立成功", "success"); document.getElementById('nCatName').value=''; document.getElementById('nCatWeb').value=''; }); }
-    function deleteCategory(catId) { if (confirm("確定要刪除分類？")) db.ref('xiangyi_shop/' + catId).remove().then(() => showToast("已刪除", "success")); }
-    function addItem() {
-        let catId = document.getElementById('aCatSelect').value; if (!catId) return alert("請選擇分類");
-        let name = document.getElementById('nItemName').value.trim(); if (!name) return;
-        let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999 };
-        if (currentMode === 'single' || currentMode === 'retail') {
-            itemData.price = Number(document.getElementById('nItemPrice').value) || 0;
-            if (currentMode === 'retail') { let m = document.getElementById('nItemMax').value; if (m) itemData.max = Number(m); }
-        } else if (currentMode === 'range') {
-            itemData.min = Number(document.getElementById('nPriceMin').value) || 0; itemData.max = Number(document.getElementById('nPriceMax').value) || 0;
-        }
-        db.ref(`xiangyi_shop/${catId}/items/${itemData.id}`).set(itemData).then(() => showToast("商品上架成功", "success"));
-    }
-    function deleteItem(catId, itemId) { if(confirm("確定下架此項目？")) db.ref(`xiangyi_shop/${catId}/items/${itemId}`).remove().then(() => showToast("已下架", "success")); }
     function openEditModal(cid, iid) {
         let i = storeData[cid].items[iid], a = document.getElementById('modal-input-area');
         document.getElementById('modal-title').innerText = "編輯項目";
@@ -814,12 +820,17 @@
         document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
     }
 
-    // 員工建檔與職位更新 (直接修正職位無法變動之 Bug)
+    // 將更改員工職位提升至全域函式確保 onclick 可以抓到
+    function updateEmpRole(eid, newRole) {
+        db.ref('employees/' + eid + '/role').set(newRole).then(() => showToast("職位已成功更新", "success"));
+    }
+
     function refreshEmpUI() {
         let container = document.getElementById('admin-emp-list-container'); container.innerHTML = '';
-        if (Object.keys(empData).length === 0) { container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center;">目前無員工</p>'; return; }
+        if (Object.keys(empData).length === 0) { container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center;">目前無現有員工</p>'; return; }
         for (let id in empData) {
             let e = empData[id];
+            if (!e) continue;
             let roleOpts = ROLES_LIST.map(r => `<option value="${r}" ${r===e.role?'selected':''}>${r}</option>`).join('');
             container.innerHTML += `
                 <div class="emp-list-item">
@@ -828,7 +839,7 @@
                         <span style="font-size:11px; color:#aaa;">帳號: ${e.username}</span>
                     </div>
                     <div style="display:flex; gap:5px; align-items:center;">
-                        <select onchange="window.updateEmpRole('${id}', this.value)" style="margin:0; padding:6px; font-size:11px; width:auto;">
+                        <select onchange="updateEmpRole('${id}', this.value)" style="margin:0; padding:6px; font-size:11px; width:auto;">
                             ${roleOpts}
                         </select>
                         <button class="del-btn" onclick="deleteEmployee('${id}')">開除</button>
@@ -837,25 +848,23 @@
             `;
         }
     }
-    
-    window.updateEmpRole = function(eid, newRole) {
-        db.ref(`employees/${eid}/role`).set(newRole).then(() => showToast("職位已成功更新", "success"));
-    };
 
     function addEmployee() {
         let u = document.getElementById('new-emp-user').value.trim(), p = document.getElementById('new-emp-pass').value, n = document.getElementById('new-emp-nick').value.trim(), r = document.getElementById('new-emp-role').value;
         if(!u || !p || !n) { alert("所有欄位必填！"); return; }
         let id = 'EMP-' + Date.now();
         db.ref('employees/' + id).set({ username: u, password: p, nickname: n, role: r }).then(() => {
-            showToast(`員工建檔完成`, "success"); document.getElementById('new-emp-user').value='';
+            showToast(`員工 ${n} 建檔完成`, "success"); document.getElementById('new-emp-user').value='';
             document.getElementById('new-emp-pass').value=''; document.getElementById('new-emp-nick').value='';
         });
     }
-    function deleteEmployee(id) { if (confirm("確定要把該名員工開除並刪除帳號嗎？")) db.ref('employees/' + id).remove().then(() => showToast("員工移除成功", "success")); }
 
-    // 職位接單權限管理 (修正：支援針對「不同類別」分別設定比例)
+    function deleteEmployee(id) { if (confirm("確定要把該名員工開除並刪除帳號個資嗎？")) { db.ref('employees/' + id).remove().then(() => showToast("員工移除成功", "success")); } }
+
     function loadRolePerms() {
-        let r = document.getElementById('role-select').value, container = document.getElementById('role-perms-container');
+        let r = document.getElementById('role-select').value;
+        if(!r) return;
+        let container = document.getElementById('role-perms-container');
         container.innerHTML = '<p style="font-size:12px; color:#ff9900; margin:5px 0;">勾選允許接單之分類，並設定專屬分成：</p>';
         let roleData = rolesData[r] || {};
         
@@ -884,10 +893,10 @@
             let pct = document.getElementById(`perm-pct-${cid}`);
             if(cb) p[cid] = { canAccept: cb.checked, pct: parseInt(pct.value)||0 };
         }
-        db.ref(`roles/${r}`).set(p).then(()=>showToast(`職位 [${r}] 權限已儲存`, "success"));
+        db.ref(`roles/${r}`).set(p).then(()=>showToast(`職位 [${r}] 權限儲存成功`, "success"));
     }
 
-    // 💥 系統全方位運算與渲染大核心 💥
+    // 💥 系統全方位運算與渲染大核心 (增加完整 try...catch 防死機保護) 💥
     function refreshAllCalculations() {
         let weekStart = getWeekStartTimestamp();
         let weekId = getWeekIdStr(weekStart); 
@@ -911,155 +920,185 @@
         let sortedOrders = Object.values(ordersData).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
         
         sortedOrders.forEach(o => {
-            // == 1. 待接單與處理中渲染 ==
-            if (o.status === 'pending') {
-                if (currentLoggedUserType === 'emp') {
-                    // 檢查權限 (所有員工都能看見訂單，但權限不足按鈕會反灰)
-                    let eRole = empData[currentEmpId]?.role;
-                    let pData = eRole ? (rolesData[eRole] || {}) : {};
-                    let catPerm = pData[o.categoryId] || { canAccept: false, pct: 0 };
-                    
-                    let canTakeBtn = catPerm.canAccept 
-                        ? `<button onclick="takeOrder('${o.id}')" style="background:var(--accent); color:black; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">立刻接單</button>`
-                        : `<span style="color:#e74c3c; background:rgba(231,76,60,0.2); padding:6px 12px; border-radius:4px; font-weight:bold; font-size:11px;">無接單權限</span>`;
+            try {
+                // == 1. 待接單與處理中渲染 ==
+                if (o.status === 'pending') {
+                    if (currentLoggedUserType === 'emp') {
+                        // 權限判定：任何員工都看得到，但權限不足無法接取
+                        let eRole = null;
+                        if (empData && currentEmpId && empData[currentEmpId]) { eRole = empData[currentEmpId].role; }
+                        let pData = {};
+                        if (eRole && rolesData && rolesData[eRole]) { pData = rolesData[eRole]; }
+                        let catPerm = pData[o.categoryId] || { canAccept: false, pct: 0 };
+                        
+                        let canTakeBtn = catPerm.canAccept 
+                            ? `<button onclick="takeOrder('${o.id}')" style="background:var(--accent); color:black; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">立刻接單</button>`
+                            : `<span style="color:#e74c3c; background:rgba(231,76,60,0.2); padding:6px 12px; border-radius:4px; font-weight:bold; font-size:11px;">無接單權限</span>`;
+
+                        let itemsStr = '';
+                        if (o.details) {
+                            itemsStr = o.details.join(', ');
+                        } else if (o.items) {
+                            let nArr = [];
+                            for(let i=0; i<o.items.length; i++) nArr.push(o.items[i].name);
+                            itemsStr = nArr.join(', ');
+                        }
+
+                        pendingListHtml += `
+                            <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#222; border-left: 3px solid var(--accent);">
+                                <div style="width:100%; display:flex; justify-content:space-between;">
+                                    <b>#${o.orderNo || '未知'} <span style="color:#aaa;font-size:11px;">[${o.categoryName || '未知'}]</span></b>
+                                    <div style="display:flex; gap:5px; align-items:center;">
+                                        ${canTakeBtn}
+                                        <button onclick="cancelOrder('${o.id}')" style="background:#c0392b; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">取消訂單</button>
+                                    </div>
+                                </div>
+                                <div style="font-size:13px; color:#ddd;">總金額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></div>
+                                <div style="font-size:11px; color:#aaa;">預定人: ${o.customerName || o.discordName || '未錄入'}</div>
+                                <div style="font-size:11px; color:#888;">${o.timestamp ? new Date(o.timestamp).toLocaleString() : '未知時間'}</div>
+                            </div>
+                        `;
+                    }
+                } else if (o.status === 'processing' && o.mechanicId === currentEmpId) {
+                    let itemsListHtml = '';
+                    if (o.details && o.details.length > 0) {
+                        let nArr = [];
+                        for(let i=0; i<o.details.length; i++) {
+                            nArr.push(`<li style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#ccc; width:100%; box-sizing:border-box;">
+                                        <span>• ${o.details[i]}</span>
+                                        <span style="color:#e74c3c; cursor:pointer; font-weight:bold; margin-left:8px;" onclick="deleteOrderSubItem('${o.id}', ${i})">❌ 刪除</span>
+                                    </li>`);
+                        }
+                        itemsListHtml = nArr.join('');
+                    } else {
+                        itemsListHtml = '<li style="color:#888;">無訂購細項</li>';
+                    }
 
                     pendingListHtml += `
-                        <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#222; border-left: 3px solid var(--accent);">
-                            <div style="width:100%; display:flex; justify-content:space-between;">
-                                <b>#${o.orderNo} <span style="color:#aaa;font-size:11px;">[${o.categoryName}]</span></b>
-                                <div style="display:flex; gap:5px; align-items:center;">
-                                    ${canTakeBtn}
-                                    <button onclick="cancelOrder('${o.id}')" style="background:#c0392b; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">取消訂單</button>
-                                </div>
+                        <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#2f3136; border: 2px solid var(--accent);">
+                            <div style="width:100%; display:flex; justify-content:space-between;"><b style="color:var(--accent)">#${o.orderNo} [處理中]</b><span style="color:#aaa;font-size:11px;">[${o.categoryName}]</span></div>
+                            <div style="font-size:13px; color:#fff; background:rgba(0,0,0,0.3); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
+                                👤 <b>客戶名稱:</b> <span style="color:var(--accent); font-weight:bold;">${o.customerName || o.discordName || '未錄入'}</span> 
+                                <span style="font-size:10px; color:#888;">(ID: ${o.customerId || o.discordId || '未知'})</span><br>
+                                <div style="font-size:11px; color:#aaa; margin:5px 0 3px 0;">🛠️ 細項內容物調整與刪減：</div>
+                                <ul style="margin:5px 0 0 0; padding:0; font-size:12px; list-style-type:none; display:flex; flex-direction:column; gap:3px; width:100%;">
+                                    ${itemsListHtml}
+                                </ul>
                             </div>
-                            <div style="font-size:13px; color:#ddd;">總金額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></div>
-                            <div style="font-size:11px; color:#aaa;">預定人: ${o.customerName || o.discordName || '未錄入'}</div>
-                            <div style="font-size:11px; color:#888;">${new Date(o.timestamp).toLocaleString()}</div>
+                            <div style="font-size:13px; color:#ddd; width:100%; display:flex; justify-content:space-between;">
+                                <span>當前總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></span>
+                                <span>應得估計分成: <b style="color:#2ecc71">$${Number(o.commission || 0).toLocaleString()}</b></span>
+                            </div>
+                            <button onclick="openEmpActiveModal('${o.id}')" style="background:#2ecc71; color:white; width:100%; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">確認完成訂單</button>
+                            <button onclick="abandonOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">放棄接單 (釋回大廳)</button>
                         </div>
                     `;
                 }
-            } else if (o.status === 'processing' && o.mechanicId === currentEmpId) {
-                let itemsListHtml = '';
-                if (o.details && o.details.length > 0) {
-                    itemsListHtml = o.details.map((item, idx) => {
-                        return `<li style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#ccc; width:100%; box-sizing:border-box;">
-                                    <span>• ${item}</span>
-                                    <span style="color:#e74c3c; cursor:pointer; font-weight:bold; margin-left:8px;" onclick="deleteOrderSubItem('${o.id}', ${idx})">❌ 刪除</span>
-                                </li>`;
-                    }).join('');
-                } else {
-                    itemsListHtml = '<li style="color:#888;">無訂購細項</li>';
-                }
-
-                pendingListHtml += `
-                    <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:#2f3136; border: 2px solid var(--accent);">
-                        <div style="width:100%; display:flex; justify-content:space-between;"><b style="color:var(--accent)">#${o.orderNo} [處理中]</b><span style="color:#aaa;font-size:11px;">[${o.categoryName}]</span></div>
-                        <div style="font-size:13px; color:#fff; background:rgba(0,0,0,0.3); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
-                            👤 <b>客戶名稱:</b> <span style="color:var(--accent); font-weight:bold;">${o.customerName || o.discordName || '未錄入'}</span> 
-                            <span style="font-size:10px; color:#888;">(ID: ${o.customerId || o.discordId || '未知'})</span><br>
-                            <div style="font-size:11px; color:#aaa; margin:5px 0 3px 0;">🛠️ 細項內容物調整與刪減：</div>
-                            <ul style="margin:5px 0 0 0; padding:0; font-size:12px; list-style-type:none; display:flex; flex-direction:column; gap:3px; width:100%;">
-                                ${itemsListHtml}
-                            </ul>
-                        </div>
-                        <div style="font-size:13px; color:#ddd; width:100%; display:flex; justify-content:space-between;">
-                            <span>當前總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></span>
-                            <span>應得估計分成: <b style="color:#2ecc71">$${Number(o.commission || 0).toLocaleString()}</b></span>
-                        </div>
-                        <button onclick="openEmpActiveModal('${o.id}')" style="background:#2ecc71; color:white; width:100%; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">確認完成訂單</button>
-                        <button onclick="abandonOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">放棄接單 (釋回大廳)</button>
-                    </div>
-                `;
-            }
-            
-            // == 2. 發薪、營收統計與歷史已結算區 (僅抓完成) ==
-            if (o.status === 'completed' || o.status === 'accepted') {
-                let t = o.timestamp || 0;
-                let priceToUse = Number(o.totalPrice || o.price || 0);
-                let orderWeekStart = getWeekStartTimestampByTime(t);
-                let orderWeekId = getWeekIdStr(orderWeekStart);
-                let commAmount = o.commission || 0;
                 
-                if (!commAmount) {
-                    if (o.isRoadside) commAmount = Math.round(priceToUse * 0.9);
-                    else commAmount = Math.round(priceToUse * ((o.settledRate || 70) / 100));
-                }
-                
-                let empIdForSum = o.mechanicId || o.acceptedBy;
-                let empNameForSum = o.mechanicName || (empData[empIdForSum] ? empData[empIdForSum].nickname : '未知技師');
-                let isWeekSettled = paidWeeksData[orderWeekId]?.[empIdForSum]?.paid || false;
-                let settledAt = isWeekSettled ? paidWeeksData[orderWeekId][empIdForSum].settledAt : 0;
-                
-                if (o.isPaid || isWeekSettled) {
-                    if (now - settledAt <= RETAIN_TIME_MS) {
-                        if (!settledHistorySums[orderWeekId]) settledHistorySums[orderWeekId] = {};
-                        if (!settledHistorySums[orderWeekId][empIdForSum]) settledHistorySums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
-                        settledHistorySums[orderWeekId][empIdForSum].earn += commAmount;
-                        settledHistorySums[orderWeekId][empIdForSum].count++;
+                // == 2. 發薪、營收統計與歷史已結算區 (僅抓完成) ==
+                if (o.status === 'completed' || o.status === 'accepted') {
+                    let t = o.timestamp || 0;
+                    let priceToUse = Number(o.totalPrice || o.price || 0);
+                    let orderWeekStart = getWeekStartTimestampByTime(t);
+                    let orderWeekId = getWeekIdStr(orderWeekStart);
+                    let commAmount = o.commission || 0;
+                    
+                    if (!commAmount) {
+                        if (o.isRoadside) commAmount = Math.round(priceToUse * 0.9);
+                        else commAmount = Math.round(priceToUse * ((o.settledRate || 70) / 100));
                     }
-                } else {
-                    if (orderWeekId === weekId) {
-                        if (!currentWeekSums[empIdForSum]) currentWeekSums[empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
-                        currentWeekSums[empIdForSum].earn += commAmount;
-                        currentWeekSums[empIdForSum].count++;
+                    
+                    let empIdForSum = o.mechanicId || o.acceptedBy;
+                    let empNameForSum = o.mechanicName || (empData[empIdForSum] ? empData[empIdForSum].nickname : '未知技師');
+                    
+                    let isWeekSettled = false;
+                    let settledAt = 0;
+                    if (paidWeeksData[orderWeekId] && paidWeeksData[orderWeekId][empIdForSum] && paidWeeksData[orderWeekId][empIdForSum].paid) {
+                        isWeekSettled = true;
+                        settledAt = paidWeeksData[orderWeekId][empIdForSum].settledAt;
+                    }
+                    
+                    if (o.isPaid || isWeekSettled) {
+                        if (now - settledAt <= RETAIN_TIME_MS) {
+                            if (!settledHistorySums[orderWeekId]) settledHistorySums[orderWeekId] = {};
+                            if (!settledHistorySums[orderWeekId][empIdForSum]) settledHistorySums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
+                            settledHistorySums[orderWeekId][empIdForSum].earn += commAmount;
+                            settledHistorySums[orderWeekId][empIdForSum].count++;
+                        }
                     } else {
-                        if (!pastUnsettledSums[orderWeekId]) pastUnsettledSums[orderWeekId] = {};
-                        if (!pastUnsettledSums[orderWeekId][empIdForSum]) pastUnsettledSums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
-                        pastUnsettledSums[orderWeekId][empIdForSum].earn += commAmount;
-                        pastUnsettledSums[orderWeekId][empIdForSum].count++;
+                        if (orderWeekId === weekId) {
+                            if (!currentWeekSums[empIdForSum]) currentWeekSums[empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
+                            currentWeekSums[empIdForSum].earn += commAmount;
+                            currentWeekSums[empIdForSum].count++;
+                        } else {
+                            if (!pastUnsettledSums[orderWeekId]) pastUnsettledSums[orderWeekId] = {};
+                            if (!pastUnsettledSums[orderWeekId][empIdForSum]) pastUnsettledSums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
+                            pastUnsettledSums[orderWeekId][empIdForSum].earn += commAmount;
+                            pastUnsettledSums[orderWeekId][empIdForSum].count++;
+                        }
+                    }
+
+                    if (t >= weekStart) {
+                        totalCount++;
+                        totalAmount += priceToUse;
+                        weeklyIncome += (priceToUse - commAmount);
+                    }
+                    
+                    if (currentLoggedUserType === 'emp' && (o.mechanicId === currentEmpId || o.acceptedBy === currentEmpId) && t >= weekStart) {
+                        myCount++;
+                        myAmount += priceToUse;
+                        myCommission += commAmount;
                     }
                 }
-
-                if (t >= weekStart) {
-                    totalCount++;
-                    totalAmount += priceToUse;
-                    weeklyIncome += (priceToUse - commAmount);
-                }
                 
-                if (currentLoggedUserType === 'emp' && (o.mechanicId === currentEmpId || o.acceptedBy === currentEmpId) && t >= weekStart) {
-                    myCount++;
-                    myAmount += priceToUse;
-                    myCommission += commAmount;
-                }
-            }
-            
-            // == 3. 老闆的 72H 歷史大廳 ==
-            if (now - (o.timestamp || 0) <= RETAIN_TIME_MS) {
-                let badge = '';
-                let mName = o.mechanicName || (empData[o.acceptedBy || o.mechanicId]?.nickname) || '尚未接單';
-                if (o.status === 'pending') badge = '<span style="color:#e74c3c">未接單</span>';
-                else if (o.status === 'processing') badge = `<span style="color:#ff9900">接單處理中 (${mName})</span>`;
-                else badge = `<span style="color:#2ecc71">已完成 (${mName})</span>`;
-                
-                let subItemsHtml = '';
-                if (o.details && o.details.length > 0) {
-                    subItemsHtml = o.details.map((item, idx) => {
-                        return `<div style="display:flex; justify-content:space-between; align-items:center; background:#222; padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#ccc;">
-                                    <span>${item}</span>
-                                    <span style="color:#e74c3c; cursor:pointer; font-weight:bold;" onclick="deleteOrderSubItem('${o.id}', ${idx})">❌ 刪除項目</span>
-                                </div>`;
-                    }).join('');
-                }
+                // == 3. 老闆的 72H 歷史大廳 ==
+                if (now - (o.timestamp || 0) <= RETAIN_TIME_MS) {
+                    let badge = '';
+                    let mName = o.mechanicName || '未知技師';
+                    if (!o.mechanicName) {
+                        let accId = o.acceptedBy || o.mechanicId;
+                        if (accId && empData[accId]) mName = empData[accId].nickname;
+                        else mName = '尚未接單';
+                    }
 
-                let isCmpl = (o.status === 'completed' || o.status === 'accepted');
-                historyListHtml += `
-                    <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px; background:#1e1e1e;">
-                        <div style="display:flex; justify-content:space-between; width:100%;">
-                            <b>#${o.orderNo}</b> ${badge}
+                    if (o.status === 'pending') badge = '<span style="color:#e74c3c">未接單</span>';
+                    else if (o.status === 'processing') badge = `<span style="color:#ff9900">處理中 (${mName})</span>`;
+                    else badge = `<span style="color:#2ecc71">已完成 (${mName})</span>`;
+                    
+                    let subItemsHtml = '';
+                    if (o.details && o.details.length > 0) {
+                        let nArr = [];
+                        for(let i=0; i<o.details.length; i++) {
+                            nArr.push(`<div style="display:flex; justify-content:space-between; align-items:center; background:#222; padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#ccc;">
+                                        <span>${o.details[i]}</span>
+                                        <span style="color:#e74c3c; cursor:pointer; font-weight:bold;" onclick="deleteOrderSubItem('${o.id}', ${i})">❌ 刪除項目</span>
+                                    </div>`);
+                        }
+                        subItemsHtml = nArr.join('');
+                    }
+
+                    let isCmpl = (o.status === 'completed' || o.status === 'accepted');
+                    historyListHtml += `
+                        <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px; background:#1e1e1e;">
+                            <div style="display:flex; justify-content:space-between; width:100%;">
+                                <b>#${o.orderNo || '未知'}</b> ${badge}
+                            </div>
+                            <div style="font-size:12px; color:#aaa; width:100%; border-bottom:1px solid #333; padding-bottom:5px;">
+                                👤 訂購者名稱: <strong style="color:var(--accent)">${o.customerName || o.discordName || '未驗證'}</strong> 
+                            </div>
+                            <div style="width:100%; margin:4px 0;">
+                                <span style="font-size:11px; color:#888;">🛠️ 細項內容物與刪減：</span>
+                                ${subItemsHtml}
+                            </div>
+                            <div style="color:#aaa; font-size:11px; width:100%; display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                                <span>總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b> | 實發: $${Number(o.commission || 0).toLocaleString()}</span>
+                                <button class="del-btn" onclick="${isCmpl ? `deleteCompletedOrder('${o.id}')` : `cancelOrder('${o.id}')`}">${isCmpl ? '強制剔除扣回公款' : '直接取消訂單'}</button>
+                            </div>
                         </div>
-                        <div style="font-size:12px; color:#aaa; width:100%; border-bottom:1px solid #333; padding-bottom:5px;">
-                            👤 訂購者名稱: <strong style="color:var(--accent)">${o.customerName || o.discordName || '未驗證'}</strong> 
-                        </div>
-                        <div style="width:100%; margin:4px 0;">
-                            <span style="font-size:11px; color:#888;">🛠️ 細項內容物與刪減：</span>
-                            ${subItemsHtml}
-                        </div>
-                        <div style="color:#aaa; font-size:11px; width:100%; display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
-                            <span>總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b> | 實發: $${Number(o.commission || 0).toLocaleString()}</span>
-                            <button class="del-btn" onclick="${isCmpl ? `deleteCompletedOrder('${o.id}')` : `cancelOrder('${o.id}')`}">${isCmpl ? '強制剔除扣回公款' : '直接取消訂單'}</button>
-                        </div>
-                    </div>
-                `;
+                    `;
+                }
+            } catch (error) {
+                console.error("渲染單筆訂單發生錯誤, 自動跳過以防崩潰: ", o.id, error);
             }
         });
         
@@ -1114,8 +1153,14 @@
                     if (now - sAt <= RETAIN_TIME_MS) {
                         hasHistory = true;
                         let timeStr = new Date(sAt).toLocaleString('zh-TW', { hour12: false });
-                        let eName = settledHistorySums[wId]?.[eId]?.name || '已結算員工';
-                        let eEarn = settledHistorySums[wId]?.[eId]?.earn || paidWeeksData[wId][eId].salary || 0;
+                        let eName = '已結算員工';
+                        let eEarn = 0;
+                        if (settledHistorySums[wId] && settledHistorySums[wId][eId]) {
+                            eName = settledHistorySums[wId][eId].name || '已結算員工';
+                            eEarn = settledHistorySums[wId][eId].earn || 0;
+                        } else if (paidWeeksData[wId] && paidWeeksData[wId][eId]) {
+                            eEarn = paidWeeksData[wId][eId].salary || 0;
+                        }
                         
                         hHtml += `<div class="week-block" style="border-left-color:#2ecc71;">
                             <div class="week-title" style="color:#2ecc71;">
@@ -1142,7 +1187,6 @@
         return sat.getTime();
     }
 
-    // 發薪動作：結算個人薪資 (扣除餘額)
     async function manualSettleSalary(weekId, empId) {
         if (!confirm(`確定要結算此員工薪資，並將薪水從公款餘額中扣除嗎？`)) return;
         
@@ -1171,7 +1215,6 @@
         } else showToast("無待結算項目", "info");
     }
 
-    // 取消個別結算 (退回公款)
     async function cancelPaySingleEmployee(weekId, empId) {
         if (!confirm(`確定要取消此結清紀錄？已發放的薪水將退回公款。`)) return;
         let paidRecord = paidWeeksData[weekId] && paidWeeksData[weekId][empId];
@@ -1202,7 +1245,11 @@
             if (priceMatch && priceMatch[1]) { subtractedPrice = parseInt(priceMatch[1]) || 0; } 
             else { let retailMatch = itemStr.match(/\(\$(\d+)\)/); if (retailMatch && retailMatch[1]) subtractedPrice = parseInt(retailMatch[1]) || 0; }
 
-            let newDetails = [...o.details]; newDetails.splice(itemIndex, 1);
+            let newDetails = [];
+            for (let i = 0; i < o.details.length; i++) {
+                if (i !== itemIndex) newDetails.push(o.details[i]);
+            }
+            
             let oldPrice = Number(o.totalPrice || o.price || 0);
             let newPrice = Math.max(0, oldPrice - subtractedPrice);
 
@@ -1216,20 +1263,27 @@
                 }
             }
 
-            await db.ref().update({
-                [`orders/${orderId}/details`]: newDetails,
-                [`orders/${orderId}/totalPrice`]: newPrice,
-                [`orders/${orderId}/price`]: newPrice,
-                [`orders/${orderId}/commission`]: newCommission
-            });
+            let updates = {};
+            updates[`orders/${orderId}/details`] = newDetails;
+            updates[`orders/${orderId}/totalPrice`] = newPrice;
+            updates[`orders/${orderId}/price`] = newPrice;
+            updates[`orders/${orderId}/commission`] = newCommission;
+
+            await db.ref().update(updates);
             showToast("✅ 細項刪減成功！", "success");
         });
     }
 
-    // 員工接單
     function takeOrder(id) {
         let e = empData[currentEmpId]; let o = ordersData[id];
-        let hasActive = Object.values(ordersData).some(ord => ord.status === 'processing' && (ord.mechanicId === currentEmpId || ord.acceptedBy === currentEmpId));
+        if (!e || !o) return;
+        let hasActive = false;
+        for (let key in ordersData) {
+            let ord = ordersData[key];
+            if (ord.status === 'processing' && (ord.mechanicId === currentEmpId || ord.acceptedBy === currentEmpId)) {
+                hasActive = true; break;
+            }
+        }
         if (hasActive) { showToast("您目前有一單施工中，請完成後再接新訂單！", "error"); return; }
         
         let pData = rolesData[e.role] || {}; let catPerm = pData[o.categoryId];
@@ -1247,11 +1301,15 @@
         });
     }
 
-    // 完工大廳 (餘額增加)
     function openEmpActiveModal(id) {
         let o = ordersData[id], area = document.getElementById('modal-input-area');
         document.getElementById('modal-title').innerText = "👨‍💻 訂單施工回報大廳";
-        document.getElementById('modal-item-name').innerText = `客戶: ${o.customerName || o.discordName}\n項目: ${o.details ? o.details.join(', ') : o.items?.map(i=>i.name).join(', ')}`;
+        let displayItems = '';
+        if(o.details) displayItems = o.details.join(', ');
+        else if(o.items) {
+            let nArr = []; for(let i=0; i<o.items.length; i++) nArr.push(o.items[i].name); displayItems = nArr.join(', ');
+        }
+        document.getElementById('modal-item-name').innerText = `客戶: ${o.customerName || o.discordName}\n項目: ${displayItems}`;
         area.innerHTML = `<p style="color:#2ecc71; text-align:center; font-weight:bold; font-size:16px;">💰 應收固定總價: $${Number(o.totalPrice || o.price || 0).toLocaleString()}</p>`;
         
         document.getElementById('modal-confirm').onclick = () => {
@@ -1261,7 +1319,8 @@
                 db.ref('funds/balance').set(currentBalance + finalPrice).then(() => {
                     showToast("🎉 完工回報成功！公款已即時入庫。", "success");
                     let latestOrder = ordersData[id] || o;
-                    updateDiscordWebhook(latestOrder, "✅ 訂單已完成", 3066993, latestOrder.mechanicName || empData[currentEmpId].nickname);
+                    let mName = latestOrder.mechanicName || (empData[currentEmpId] ? empData[currentEmpId].nickname : "未知");
+                    updateDiscordWebhook(latestOrder, "✅ 訂單已完成", 3066993, mName);
                     closeModal();
                 });
             });
@@ -1269,7 +1328,6 @@
         document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
     }
 
-    // 員工放棄接單 (釋回大廳)
     async function abandonOrder(id) {
         let order = ordersData[id]; if (!order) return;
         showCustomConfirm("確定要放棄此訂單？", "放棄後訂單將重新回到待接清單中。", async () => {
@@ -1281,14 +1339,13 @@
         });
     }
 
-    // 取消待接單 (不扣餘額)
     async function cancelOrder(id) {
         let order = ordersData[id]; if (!order) return;
         if (order.status === 'completed' || order.status === 'accepted') return showToast("已完工訂單請用「強制剔除」功能！", "error");
         
         showCustomConfirm("取消此訂單？", "此操作會將訂單從清單永久移除。", async () => {
             try {
-                await updateDiscordWebhook(order, "❌ 訂單已取消", 15548997, "無", true);
+                await updateDiscordWebhook(order, "❌ 訂單已取消", 15548997, "無");
                 await db.ref(`orders/${id}`).remove();
                 showToast("訂單已順利取消", "success");
             } catch (e) { showToast("取消失敗", "error"); }
@@ -1317,7 +1374,6 @@
         });
     }
 
-    // 強制刪除完工訂單 (扣回公款淨利)
     function deleteCompletedOrder(orderId) {
         if (!confirm("⚠️ 警告：刪除已完工之訂單將會實時倒扣公款營收！\n確定要強制剔除此訂單嗎？")) return;
         let o = ordersData[orderId];
@@ -1333,7 +1389,7 @@
         db.ref('funds/balance').set(currentBalance - deduction).then(() => {
             db.ref('orders/' + orderId).remove().then(() => { 
                 showToast("訂單已強制剔除，公款盈餘已倒扣校正完畢。", "success"); 
-                updateDiscordWebhook(o, "❌ 訂單遭強制剔除", 15548997, "無", true);
+                updateDiscordWebhook(o, "❌ 訂單遭強制剔除", 15548997, "無");
             });
         });
     }
