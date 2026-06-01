@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v6.4</title>
+    <title>翔毅車業預定系統 v6.4.1</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -138,8 +138,8 @@
     <!-- 老闆登入 -->
     <div id="login-view" style="display:none;">
         <h3>👑 老闆後台登入</h3>
-        <input type="text" id="aUser" placeholder="老闆帳號">
-        <input type="password" id="aPass" placeholder="老闆密碼">
+        <input type="text" id="aUser" placeholder="老闆帳號 (pomelo)">
+        <input type="password" id="aPass" placeholder="老闆密碼 (0326)">
         <button onclick="authAdmin()" style="background:var(--accent); color:black; font-weight:bold;">登入</button>
         <button style="background:#444;" onclick="location.reload()">返回</button>
     </div>
@@ -398,6 +398,18 @@
     let currentLoggedUserType = null; 
     let currentEmpId = null;
 
+    // 工具函式
+    async function generateOrderNo() {
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+        const countRef = db.ref(`order_counts/${dateStr}`);
+        let count = 1;
+        const snapshot = await countRef.once('value');
+        if (snapshot.exists()) { count = snapshot.val() + 1; }
+        await countRef.set(count);
+        return `${dateStr}${count.toString().padStart(4, '0')}`;
+    }
+
     function showToast(msg, type = 'info') {
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
@@ -544,6 +556,7 @@
         if (isNaN(nv) || nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
     }
 
+    // 計算總價 - 防呆與視覺修復
     function calcTotalCost() {
         let catId = document.getElementById('pCat').value; if (!catId) return;
         let cat = storeData[catId], total = 0, hintHtml = '<b>📌 計價細目明細：</b><br>';
@@ -574,7 +587,7 @@
         if (hasChecked) { 
             hintEl.innerHTML = hintHtml + `-----------------------<br>💰 <b>目前估計總計金額：$${total.toLocaleString()}</b>`; 
             hintEl.style.display = 'block'; 
-            document.getElementById('pPrice').value = `$${total.toLocaleString()}`; 
+            document.getElementById('pPrice').value = total; 
         }
         else { hintEl.style.display = 'none'; document.getElementById('pPrice').value = ''; }
     }
@@ -610,7 +623,6 @@
                 embed.fields.push({ name: "🛠️ 接單員工", value: mechanicName || "尚未接單", inline: true });
             }
 
-            // 完美處理包含 thread_id 的 Discord Webhook 網址
             let urlParts = order.webhookUrl.split('?');
             let baseUrl = urlParts[0];
             let queryParams = urlParts.length > 1 ? ('?' + urlParts[1]) : '';
@@ -665,6 +677,8 @@
                 return `${i.name}  (${valStr})`;
             });
             
+            let webhookUrl = cat.webhook || '';
+
             let newOrder = {
                 id: 'ORD-' + Date.now(),
                 orderNo: orderNo,
@@ -680,10 +694,11 @@
                 customerName: userData.global_name || userData.username || '未知客戶', 
                 discordAvatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png',
                 status: 'pending',
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                webhookUrl: webhookUrl,
+                messageId: ''
             };
 
-            let webhookUrl = cat.webhook;
             let embedPayload = {
                 title: `🆕 新預定單 #${orderNo}`,
                 color: 16751104,
@@ -697,12 +712,9 @@
                 footer: { text: "翔毅車業・預訂系統" },
                 timestamp: new Date().toISOString()
             };
-            
             newOrder.embedData = embedPayload;
-            newOrder.webhookUrl = webhookUrl;
 
-            // 完美處理包含 thread_id 的 Discord Webhook 網址
-            if (webhookUrl && webhookUrl.trim() !== '') {
+            if (webhookUrl.trim() !== '') {
                 try {
                     let urlParts = webhookUrl.split('?');
                     let baseUrl = urlParts[0];
@@ -716,7 +728,7 @@
                     });
                     if (res.ok) {
                         let msgData = await res.json();
-                        newOrder.messageId = msgData.id;
+                        newOrder.messageId = msgData.id || '';
                     }
                 } catch (we) { console.error("Webhook Err:", we); }
             }
@@ -745,7 +757,6 @@
         }
     }
     
-    // 修復強制帳號密碼登入
     function authAdmin() {
         let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
         if (u === 'pomelo' && p === '0326') { 
@@ -857,7 +868,6 @@
         document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
     }
 
-    // 將更改員工職位提升至全域函式確保 onclick 可以抓到
     window.updateEmpRole = function(eid, newRole) {
         db.ref('employees/' + eid + '/role').set(newRole).then(() => showToast("職位已成功更新", "success"));
     };
@@ -961,7 +971,6 @@
                 // == 1. 待接單與處理中渲染 ==
                 if (o.status === 'pending') {
                     if (currentLoggedUserType === 'emp') {
-                        // 權限判定：任何員工都看得到，但權限不足無法接取
                         let eRole = null;
                         if (empData && currentEmpId && empData[currentEmpId]) { eRole = empData[currentEmpId].role; }
                         let pData = {};
@@ -1023,7 +1032,7 @@
                     `;
                 }
                 
-                // == 2. 發薪、營收統計與歷史已結算區 (僅抓完成) ==
+                // == 2. 發薪、營收統計與歷史已結算區 ==
                 if (o.status === 'completed' || o.status === 'accepted') {
                     let t = o.timestamp || 0;
                     let priceToUse = Number(o.totalPrice || o.price || 0);
