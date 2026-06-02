@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v6.4.1</title>
+    <title>翔毅車業預定系統 v6.4.2</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -386,7 +386,6 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     
-    // 全域變數定義
     const ROLES_LIST = ['董事長', '副董事長', '秘書', '廠長', '副廠長', '技師', '實習技師'];
     let storeData = {}, userData = null, currentMode = 'single';
     let empData = {}; 
@@ -398,7 +397,6 @@
     let currentLoggedUserType = null; 
     let currentEmpId = null;
 
-    // 工具函式
     async function generateOrderNo() {
         const today = new Date();
         const dateStr = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
@@ -443,7 +441,6 @@
         document.getElementById('modal-overlay').style.display = 'none';
     }
 
-    // 初始化與監聽
     window.onload = () => {
         const hash = new URLSearchParams(window.location.hash.slice(1));
         const token = hash.get('access_token');
@@ -473,7 +470,6 @@
         window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
     }
 
-    // --- 前台渲染與商品選擇核心 ---
     function refreshUI() {
         const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
         pC.innerHTML = '<option value="">請選擇...</option>'; aC.innerHTML = '<option value="">請選擇...</option>'; aLC.innerHTML = '';
@@ -556,7 +552,6 @@
         if (isNaN(nv) || nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
     }
 
-    // 計算總價 - 防呆與視覺修復
     function calcTotalCost() {
         let catId = document.getElementById('pCat').value; if (!catId) return;
         let cat = storeData[catId], total = 0, hintHtml = '<b>📌 計價細目明細：</b><br>';
@@ -587,12 +582,11 @@
         if (hasChecked) { 
             hintEl.innerHTML = hintHtml + `-----------------------<br>💰 <b>目前估計總計金額：$${total.toLocaleString()}</b>`; 
             hintEl.style.display = 'block'; 
-            document.getElementById('pPrice').value = total; 
+            document.getElementById('pPrice').value = `$${total.toLocaleString()}`; 
         }
         else { hintEl.style.display = 'none'; document.getElementById('pPrice').value = ''; }
     }
 
-    // --- Discord Webhook 狀態完美同步模組 ---
     async function updateDiscordWebhook(order, statusText, color, mechanicName) {
         if (!order.webhookUrl || !order.messageId || !order.embedData) return;
         try {
@@ -638,7 +632,6 @@
         }
     }
 
-    // 訂單送出模組
     async function sendOrder() {
         if (!userData) { showToast("請先點擊上方按鈕，完成 Discord 帳號聯動驗證後再送出預定！", "error"); return; }
         let catId = document.getElementById('pCat').value; if (!catId) { showToast("請選擇業務類別", "error"); return; }
@@ -745,7 +738,6 @@
         }
     }
 
-    // 登入切換與驗證
     function showLogin(type) { 
         document.getElementById('player-view').style.display='none'; 
         if(type==='boss') {
@@ -761,7 +753,9 @@
         let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
         if (u === 'pomelo' && p === '0326') { 
             currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
-            showToast("👑 老闆登入成功", "success"); enterAdmin(); 
+            showToast("👑 老闆登入成功", "success"); 
+            refreshAllCalculations(); 
+            enterAdmin(); 
         } else { 
             showToast("帳號或密碼錯誤", "error"); 
         }
@@ -776,6 +770,7 @@
                 currentLoggedUserType = 'emp';
                 currentEmpId = id;
                 showToast(`🛠️ 歡迎回來，${empData[id].nickname}`, "success");
+                refreshAllCalculations(); 
                 enterAdmin();
                 break;
             }
@@ -868,8 +863,12 @@
         document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
     }
 
+    // 提升到 global，確保 onchange 可以呼叫到
     window.updateEmpRole = function(eid, newRole) {
-        db.ref('employees/' + eid + '/role').set(newRole).then(() => showToast("職位已成功更新", "success"));
+        db.ref('employees/' + eid + '/role').set(newRole).then(() => {
+            showToast("職位已成功更新", "success");
+            refreshAllCalculations(); 
+        });
     };
 
     function refreshEmpUI() {
@@ -940,10 +939,12 @@
             let pct = document.getElementById(`perm-pct-${cid}`);
             if(cb) p[cid] = { canAccept: cb.checked, pct: parseInt(pct.value)||0 };
         }
-        db.ref(`roles/${r}`).set(p).then(()=>showToast(`職位 [${r}] 權限儲存成功`, "success"));
+        db.ref(`roles/${r}`).set(p).then(()=> {
+            showToast(`職位 [${r}] 權限儲存成功`, "success");
+            refreshAllCalculations(); 
+        });
     }
 
-    // 💥 系統全方位運算與渲染大核心 (增加完整 try...catch 防死機保護) 💥
     function refreshAllCalculations() {
         let weekStart = getWeekStartTimestamp();
         let weekId = getWeekIdStr(weekStart); 
@@ -968,7 +969,6 @@
         
         sortedOrders.forEach(o => {
             try {
-                // == 1. 待接單與處理中渲染 ==
                 if (o.status === 'pending') {
                     if (currentLoggedUserType === 'emp') {
                         let eRole = null;
@@ -1032,7 +1032,6 @@
                     `;
                 }
                 
-                // == 2. 發薪、營收統計與歷史已結算區 ==
                 if (o.status === 'completed' || o.status === 'accepted') {
                     let t = o.timestamp || 0;
                     let priceToUse = Number(o.totalPrice || o.price || 0);
@@ -1088,7 +1087,6 @@
                     }
                 }
                 
-                // == 3. 老闆的 72H 歷史大廳 ==
                 if (now - (o.timestamp || 0) <= RETAIN_TIME_MS) {
                     let badge = '';
                     let mName = o.mechanicName || '未知技師';
@@ -1155,7 +1153,6 @@
             document.getElementById('emp-my-commission').innerText = '$' + myCommission.toLocaleString();
         }
 
-        // 💥 發薪大廳分區渲染 💥
         if (document.getElementById('payroll-current-week')) {
             let cHtml = '';
             if (Object.keys(currentWeekSums).length === 0) { cHtml = '<p style="color:#666; font-size:11px; margin:0;">本週暫無技師完工累積金額</p>'; }
@@ -1405,7 +1402,7 @@
     }
 
     function deleteCompletedOrder(orderId) {
-        if (!confirm("⚠️ 警告：刪除已完工之訂單將會實時倒扣公款營收！\n確定要強制剔除此訂單嗎？")) return;
+        if (!confirm("⚠️ 警告：刪除已完工之訂單將會實時倒扣公款營收！\n確定要強制刪除此訂單嗎？")) return;
         let o = ordersData[orderId];
         let priceToUse = Number(o.totalPrice || o.price || 0);
         let commAmount = o.commission || 0;
@@ -1418,8 +1415,8 @@
         let currentBalance = Number(fundsData.balance || 0);
         db.ref('funds/balance').set(currentBalance - deduction).then(() => {
             db.ref('orders/' + orderId).remove().then(() => { 
-                showToast("訂單已強制剔除，公款盈餘已倒扣校正完畢。", "success"); 
-                updateDiscordWebhook(o, "❌ 訂單遭強制剔除", 15548997, "無");
+                showToast("訂單已強制刪除，公款盈餘已倒扣校正完畢。", "success"); 
+                updateDiscordWebhook(o, "❌ 訂單遭強制刪除", 15548997, "無");
             });
         });
     }
