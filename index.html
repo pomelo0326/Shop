@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v7.0</title>
+    <title>翔毅車業預定系統 v7.1</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -110,13 +110,17 @@
         /* 打卡系統與客戶進度UI */
         .duty-status-badge { padding: 4px 10px; border-radius: 15px; font-size: 11px; font-weight: bold; color: white; }
         .customer-progress-box { border: 1px dashed var(--accent); background: rgba(255,153,0,0.05); padding: 15px; border-radius: 10px; margin-top: 25px; display: none; }
-        .progress-card { background: var(--card); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; margin-top: 10px; }
+        .progress-item { background: var(--card); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; margin-bottom: 10px; transition: 0.3s; }
 
         @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
         @keyframes fadeOut { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -10px); } }
     </style>
 </head>
 <body>
+
+<!-- 新增：提示音效標籤 -->
+<audio id="audio-new-order" src="http://googleusercontent.com/file_content/1" preload="auto"></audio>
+<audio id="audio-accept-order" src="http://googleusercontent.com/file_content/2" preload="auto"></audio>
 
 <div class="modal-overlay" id="modal-overlay"></div>
 <div id="custom-modal">
@@ -165,7 +169,7 @@
         
         <button class="btn-send" id="submit-btn" onclick="sendOrder()">送出預定</button>
 
-        <!-- 📋 新增：顧客專屬進度追蹤 -->
+        <!-- 📋 新增：顧客專屬進度追蹤區塊 -->
         <div id="customer-progress-section" class="customer-progress-box">
             <h3 style="margin:0 0 5px 0; color:var(--accent); font-size:15px;">📋 我的訂單進度 (72H內)</h3>
             <p style="font-size:11px; color:#aaa; margin:0 0 10px 0;">即時追蹤您的車輛施工狀態</p>
@@ -184,7 +188,7 @@
         <input type="text" id="aUser" placeholder="老闆帳號">
         <input type="password" id="aPass" placeholder="老闆密碼">
         <button onclick="authAdmin()" style="background:var(--accent); color:white; font-weight:bold;">登入</button>
-        <button style="background:var(--row-bg);" onclick="location.reload()">返回</button>
+        <button style="background:var(--row-bg); color:var(--text); border:1px solid var(--border-color);" onclick="location.reload()">返回</button>
     </div>
 
     <!-- 員工登入 -->
@@ -193,7 +197,7 @@
         <input type="text" id="eUser" placeholder="員工帳號">
         <input type="password" id="ePass" placeholder="員工密碼">
         <button onclick="authEmployee()" style="background:var(--accent); color:white; font-weight:bold;">登入</button>
-        <button style="background:var(--row-bg);" onclick="location.reload()">返回</button>
+        <button style="background:var(--row-bg); color:var(--text); border:1px solid var(--border-color);" onclick="location.reload()">返回</button>
     </div>
 
     <!-- 系統後台主介面 -->
@@ -253,7 +257,6 @@
                     <p style="font-size:11px; color:#888; margin-top:5px;">* 僅計算「已完成接單」與「道路救援」之營業額</p>
                 </div>
             </div>
-            <!-- 📊 新增：圖表區塊 -->
             <div class="stat-section" style="margin-top: 15px;">
                 <h4 style="margin:0 0 10px 0; color:var(--accent);">📊 營收趨勢與分佈圖</h4>
                 <div style="background: var(--card); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 10px;">
@@ -265,7 +268,7 @@
             </div>
         </div>
 
-        <!-- 3. 老闆 - 員工帳號管理 -->
+        <!-- 3. 老闆 - 員工帳號管理 (新增工時查詢按鈕) -->
         <div id="admin-page-employees" style="display:none;">
             <div class="cat-card">
                 <h4 style="margin-top:0; color:var(--accent);">新增員工</h4>
@@ -277,7 +280,7 @@
                 <button onclick="addEmployee()" style="background:var(--accent); color:white; font-weight:bold; margin-top:10px;">新增入檔</button>
             </div>
             <div class="cat-card">
-                <h4 style="margin-top:0;">現有員工</h4>
+                <h4 style="margin-top:0;">現有員工與工時查詢</h4>
                 <div id="admin-emp-list-container"><p style="color:#666; font-size:12px; text-align:center;">載入中...</p></div>
             </div>
         </div>
@@ -444,7 +447,7 @@
             html.setAttribute("data-theme", "light");
             localStorage.setItem("xiangyi_theme", "light");
         }
-        refreshAllCalculations(); // 強制重繪圖表以適應新文字顏色
+        if (chartWeekly || chartCategory) renderCharts(globalDailyData, globalCatData);
     }
     
     // 初始化主題
@@ -479,9 +482,16 @@
     let currentLoggedUserType = null; 
     let currentEmpId = null;
 
-    // 圖表對象
+    // 音效通知狀態追蹤變數
+    let isFirstLoad = true;
+    let lastPendingCount = 0;
+    let myLastOrderStatus = {};
+
+    // 圖表全域緩存
     let chartWeekly = null;
     let chartCategory = null;
+    let globalDailyData = {};
+    let globalCatData = {};
 
     async function generateOrderNo() {
         const today = new Date();
@@ -539,7 +549,9 @@
                 document.getElementById('user-display').style.display = 'flex'; 
                 document.getElementById('user-name').innerText = res.username; 
                 document.getElementById('user-id-display').innerText = `ID: ${res.id}`; 
-                refreshAllCalculations(); // 載入顧客專屬進度
+                
+                document.getElementById('customer-progress-section').style.display = 'block';
+                refreshAllCalculations(); 
             }).catch(e => console.error("Discord Login Error:", e));
         }
         document.getElementById('new-emp-role').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
@@ -548,10 +560,53 @@
         db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
         db.ref('employees').on('value', s => { empData = s.val() || {}; refreshEmpUI(); refreshAllCalculations(); });
         db.ref('roles').on('value', s => { rolesData = s.val() || {}; refreshAllCalculations(); }); 
-        db.ref('orders').on('value', s => { ordersData = s.val() || {}; refreshAllCalculations(); });
         db.ref('funds').on('value', s => { fundsData = s.val() || {balance: 0}; refreshFinanceUI(); });
         db.ref('expenses').on('value', s => { expensesData = s.val() || {}; refreshFinanceUI(); });
         db.ref('paid_weeks').on('value', s => { paidWeeksData = s.val() || {}; refreshAllCalculations(); });
+        
+        // 核心：訂單變化監聽，加入音效與通知系統
+        db.ref('orders').on('value', s => { 
+            ordersData = s.val() || {}; 
+            
+            if (!isFirstLoad) {
+                let currentPendingCount = 0;
+                Object.values(ordersData).forEach(o => {
+                    if (o.status === 'pending') currentPendingCount++;
+                    
+                    // 檢查顧客的訂單狀態是否有改變 (觸發接受訂單鈴聲)
+                    if (userData && o.customerId === userData.id) {
+                        let lastStatus = myLastOrderStatus[o.id];
+                        if (lastStatus === 'pending' && o.status === 'processing') {
+                            document.getElementById('audio-accept-order').play().catch(e=>console.log(e));
+                            showToast(`🟡 您的訂單已被技師 ${o.mechanicName || '未知'} 接受囉！`, 'success');
+                        } else if (lastStatus === 'processing' && o.status === 'completed') {
+                            showToast(`🟢 您的車輛已完工結算！請至車廠取車。`, 'success');
+                        }
+                        myLastOrderStatus[o.id] = o.status;
+                    }
+                });
+
+                // 檢查是否有新的 pending 訂單 (觸發進單鈴聲，限員工/老闆)
+                if (currentLoggedUserType === 'emp' || currentLoggedUserType === 'boss') {
+                    if (currentPendingCount > lastPendingCount) {
+                        document.getElementById('audio-new-order').play().catch(e=>console.log(e));
+                        showToast('🔔 有新的待接訂單進來囉！', 'info');
+                    }
+                }
+                lastPendingCount = currentPendingCount;
+            } else {
+                // 初次載入，設定初始狀態，不播放聲音
+                let pCount = 0;
+                Object.values(ordersData).forEach(o => {
+                    if (o.status === 'pending') pCount++;
+                    if (userData && o.customerId === userData.id) myLastOrderStatus[o.id] = o.status;
+                });
+                lastPendingCount = pCount;
+                isFirstLoad = false;
+            }
+
+            refreshAllCalculations(); 
+        });
     };
 
     function loginDiscord() {
@@ -578,7 +633,6 @@
             aLC.appendChild(catDiv);
             const itemListDiv = catDiv.querySelector('.sortable-list');
             
-            // 安全處理 items
             let catItemsObj = cat.items || {};
             let itemsArray = [];
             for(let key in catItemsObj) { itemsArray.push({ id: key, ...catItemsObj[key] }); }
@@ -772,8 +826,9 @@
                 if (i.type==='custom') valStr += ` (資產 $${(Number(i.customAssetVal)||0).toLocaleString()})`;
                 return `${i.name}  (${valStr})`;
             });
-            let detailsStrForEmbed = detailsStrArray.join("\n");
             
+            let webhookUrl = cat.webhook || '';
+
             let newOrder = {
                 id: 'ORD-' + Date.now(),
                 orderNo: orderNo,
@@ -789,17 +844,18 @@
                 customerName: userData.global_name || userData.username || '未知客戶', 
                 discordAvatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png',
                 status: 'pending',
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                webhookUrl: webhookUrl,
+                messageId: ''
             };
 
-            let webhookUrl = cat.webhook || '';
             let embedPayload = {
                 title: `🆕 新預定單 #${orderNo}`,
                 color: 16751104,
                 fields: [
                     { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
                     { name: "💰 總金額", value: `**$${computedPrice.toLocaleString()}**`, inline: true },
-                    { name: "📋 服務明細", value: "```\n" + detailsStrForEmbed + "\n```" },
+                    { name: "📋 服務明細", value: "```\n" + detailsStrArray.join("\n") + "\n```" },
                     { name: "🔴 處理狀態", value: "待接訂單" },
                     { name: "🛠️ 接單員工", value: "尚未接單", inline: true }
                 ],
@@ -902,13 +958,66 @@
         if (page === 'roles') loadRolePerms(); 
     }
 
-    // 員工打卡邏輯
+    // 員工打卡邏輯 (紀錄工時)
     function toggleDuty(onDuty) {
         if (!currentEmpId || currentEmpId === 'boss') return;
-        db.ref(`employees/${currentEmpId}/onDuty`).set(onDuty).then(() => {
+        
+        let now = Date.now();
+        let dateStr = getWeekIdStr(now); 
+        let updates = {};
+        
+        updates[`employees/${currentEmpId}/onDuty`] = onDuty;
+        
+        if (onDuty) {
+            // 打卡上班，記錄時間
+            updates[`employees/${currentEmpId}/lastClockIn`] = now;
+        } else {
+            // 打卡下班，計算時長
+            let lastIn = empData[currentEmpId].lastClockIn;
+            if (lastIn) {
+                let durationMins = Math.floor((now - lastIn) / 60000);
+                let existingMins = (empData[currentEmpId].dutyLogs && empData[currentEmpId].dutyLogs[dateStr]) ? empData[currentEmpId].dutyLogs[dateStr].minutes : 0;
+                updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+            }
+        }
+        
+        db.ref().update(updates).then(() => {
             showToast(onDuty ? "🌞 已順利開始上班！" : "🌙 已順利打卡下班！", "success");
             refreshAllCalculations();
         });
+    }
+
+    // 查看員工打卡紀錄 (老闆專用)
+    function viewDutyLogs(empId) {
+        let e = empData[empId];
+        if (!e) return;
+        
+        let html = `<div style="max-height: 250px; overflow-y: auto; text-align: left; margin-bottom: 10px;">`;
+        if (e.dutyLogs) {
+            let dates = Object.keys(e.dutyLogs).sort((a, b) => new Date(b) - new Date(a));
+            dates.forEach(d => {
+                let mins = e.dutyLogs[d].minutes || 0;
+                let hrs = Math.floor(mins / 60);
+                let remainMins = mins % 60;
+                html += `<div style="padding: 8px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between;">
+                    <span style="color: var(--text);">${d}</span>
+                    <span style="color: var(--accent); font-weight: bold;">${hrs} 小時 ${remainMins} 分鐘</span>
+                </div>`;
+            });
+        } else {
+            html += `<p style="color:#aaa; text-align:center;">尚無任何打卡紀錄</p>`;
+        }
+        html += `</div>
+                 <p style="font-size:11px; color:#e74c3c; line-height: 1.4; font-weight:bold; margin-top:5px;">
+                    ⚠️ *備註：若打卡時間與伺服器內上下班紀錄時間差過大（或伺服器內無紀錄），則當天不納入全勤計算。
+                 </p>`;
+        
+        document.getElementById('modal-title').innerText = `🕒 ${e.nickname} 的打卡時數`;
+        document.getElementById('modal-item-name').innerText = "";
+        document.getElementById('modal-input-area').innerHTML = html;
+        document.getElementById('modal-confirm').onclick = closeModal;
+        document.getElementById('custom-modal').style.display = 'block'; 
+        document.getElementById('modal-overlay').style.display = 'block';
     }
 
     // --- 圖表繪製 ---
@@ -930,7 +1039,8 @@
                         data: data,
                         backgroundColor: 'rgba(255, 153, 0, 0.6)',
                         borderColor: 'rgba(255, 153, 0, 1)',
-                        borderWidth: 1
+                        borderWidth: 1,
+                        borderRadius: 4
                     }]
                 },
                 options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: tc } }, x: { ticks: { color: tc } } }, plugins: { legend: { labels: { color: tc } } } }
@@ -948,7 +1058,8 @@
                     labels: labels,
                     datasets: [{
                         data: data,
-                        backgroundColor: ['#5865F2', '#2ecc71', '#e74c3c', '#ff9900', '#9b59b6', '#1abc9c', '#34495e']
+                        backgroundColor: ['#5865F2', '#2ecc71', '#e74c3c', '#ff9900', '#9b59b6', '#1abc9c', '#34495e'],
+                        borderColor: 'transparent'
                     }]
                 },
                 options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: tc } } } }
@@ -1044,6 +1155,7 @@
                         <span style="font-size:11px; color:#aaa;">帳號: ${e.username}</span>
                     </div>
                     <div style="display:flex; gap:5px; align-items:center;">
+                        <button onclick="viewDutyLogs('${id}')" style="background:#5865F2; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; cursor:pointer;">打卡時數</button>
                         <select onchange="window.updateEmpRole('${id}', this.value)" style="margin:0; padding:6px; font-size:11px; width:auto;">
                             ${roleOpts}
                         </select>
@@ -1127,8 +1239,8 @@
         const RETAIN_TIME_MS = 3 * 24 * 60 * 60 * 1000; 
 
         // 老闆圖表用
-        let dailyData = { '週日':0, '週一':0, '週二':0, '週三':0, '週四':0, '週五':0, '週六':0 };
-        let catData = {};
+        globalDailyData = { '週日':0, '週一':0, '週二':0, '週三':0, '週四':0, '週五':0, '週六':0 };
+        globalCatData = {};
 
         let sortedOrders = Object.values(ordersData).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
 
@@ -1147,18 +1259,18 @@
                 // 👤 顧客專屬進度渲染
                 if (userData && o.customerId === userData.id && now - t <= RETAIN_TIME_MS) {
                     let cBadge = '';
-                    if (o.status === 'pending') cBadge = '<span style="color:#e74c3c; font-weight:bold;">🔴 待接單排隊中</span>';
-                    else if (o.status === 'processing') cBadge = `<span style="color:#ff9900; font-weight:bold;">🟡 施工中 (技師: ${o.mechanicName || '未知'})</span>`;
-                    else cBadge = '<span style="color:#2ecc71; font-weight:bold;">🟢 已完工結算</span>';
+                    if (o.status === 'pending') cBadge = '<span style="color:#e74c3c; font-weight:bold;">🔴 排隊中</span>';
+                    else if (o.status === 'processing') cBadge = `<span style="color:#ff9900; font-weight:bold;">🟡 施工中 (技師：${o.mechanicName || '未知'})</span>`;
+                    else cBadge = '<span style="color:#2ecc71; font-weight:bold;">🟢 已完工</span>';
                     
                     customerProgressHtml += `
-                        <div style="background: var(--card); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; margin-bottom: 8px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <div class="progress-item">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                                 <b style="font-size: 14px; color:var(--text);">#${o.orderNo || '未知'} [${o.categoryName || '未知'}]</b>
                                 ${cBadge}
                             </div>
                             <div style="font-size: 12px; color: #888; line-height: 1.5;">
-                                車輛/備註：${(o.details && o.details.length > 0) ? o.details.join(', ') : '無'}<br>
+                                項目：${(o.details && o.details.length > 0) ? o.details.join(', ') : '無'}<br>
                                 時間：${new Date(t).toLocaleString()}
                             </div>
                         </div>
@@ -1229,7 +1341,7 @@
                     `;
                 }
                 
-                // == 2. 發薪、營收統計與歷史已結算區 ==
+                // == 2. 發薪、營收統計與歷史已結算區 (僅抓完成) ==
                 if (o.status === 'completed' || o.status === 'accepted') {
                     let priceToUse = Number(o.totalPrice || o.price || 0);
                     let orderWeekStart = getWeekStartTimestampByTime(t);
@@ -1280,9 +1392,9 @@
                         let dObj = new Date(t);
                         let days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
                         let dayName = days[dObj.getDay()];
-                        dailyData[dayName] += priceToUse;
+                        globalDailyData[dayName] = (globalDailyData[dayName] || 0) + priceToUse;
                         let cName = o.categoryName || '其他';
-                        catData[cName] = (catData[cName] || 0) + priceToUse;
+                        globalCatData[cName] = (globalCatData[cName] || 0) + priceToUse;
                     }
                     
                     if (currentLoggedUserType === 'emp' && (o.mechanicId === currentEmpId || o.acceptedBy === currentEmpId) && t >= weekStart) {
@@ -1302,9 +1414,9 @@
                         else mName = '尚未接單';
                     }
 
-                    if (o.status === 'pending') badge = '<span style="color:#e74c3c; font-weight:bold;">未接單</span>';
-                    else if (o.status === 'processing') badge = `<span style="color:#ff9900; font-weight:bold;">處理中 (${mName})</span>`;
-                    else badge = `<span style="color:#2ecc71; font-weight:bold;">已完成 (${mName})</span>`;
+                    if (o.status === 'pending') badge = '<span style="color:#e74c3c">未接單</span>';
+                    else if (o.status === 'processing') badge = `<span style="color:#ff9900">處理中 (${mName})</span>`;
+                    else badge = `<span style="color:#2ecc71">已完成 (${mName})</span>`;
                     
                     let subItemsHtml = '';
                     if (o.details && o.details.length > 0) {
@@ -1363,9 +1475,6 @@
             document.getElementById('emp-my-amount').innerText = '$' + myAmount.toLocaleString();
             document.getElementById('emp-my-commission').innerText = '$' + myCommission.toLocaleString();
         }
-
-        // 繪製圖表
-        renderCharts(dailyData, catData);
 
         // 💥 發薪大廳分區渲染 💥
         if (document.getElementById('payroll-current-week')) {
@@ -1427,53 +1536,8 @@
             if (!hasHistory) { hHtml = '<p style="color:#666; font-size:11px; margin:0;">3天內無歷史結算紀錄。</p>'; }
             document.getElementById('payroll-settled-history').innerHTML = hHtml;
         }
-    }
 
-    // --- 圖表繪製 ---
-    function renderCharts(dailyData, catData) {
-        let tc = document.documentElement.getAttribute('data-theme') === 'light' ? '#333' : '#ccc';
-        Chart.defaults.color = tc;
-        
-        let ctxWeekly = document.getElementById('weeklyChart');
-        if(ctxWeekly) {
-            if (chartWeekly) chartWeekly.destroy();
-            let labels = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-            let data = labels.map(l => dailyData[l] || 0);
-            chartWeekly = new Chart(ctxWeekly, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '本週營業額 ($)',
-                        data: data,
-                        backgroundColor: 'rgba(255, 153, 0, 0.6)',
-                        borderColor: 'rgba(255, 153, 0, 1)',
-                        borderWidth: 1,
-                        borderRadius: 4
-                    }]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: tc } }, x: { ticks: { color: tc } } }, plugins: { legend: { labels: { color: tc } } } }
-            });
-        }
-
-        let ctxCat = document.getElementById('categoryChart');
-        if(ctxCat) {
-            if (chartCategory) chartCategory.destroy();
-            let labels = Object.keys(catData);
-            let data = Object.values(catData);
-            chartCategory = new Chart(ctxCat, {
-                type: 'doughnut',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: data,
-                        backgroundColor: ['#5865F2', '#2ecc71', '#e74c3c', '#ff9900', '#9b59b6', '#1abc9c', '#34495e'],
-                        borderColor: 'transparent'
-                    }]
-                },
-                options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: tc } } } }
-            });
-        }
+        renderCharts(globalDailyData, globalCatData);
     }
 
     async function manualSettleSalary(weekId, empId) {
@@ -1567,7 +1631,11 @@
         let e = empData[currentEmpId]; let o = ordersData[id];
         if (!e || !o) return;
 
-        if (!e.onDuty) { showToast("⚠️ 您目前處於「休息中 (Off-Duty)」狀態，請先點擊上方按鈕打卡上班！", "error"); return; }
+        // 🛡️ 權限與上班狀態檢查
+        if (e.onDuty !== true && e.onDuty !== "true") { 
+            showToast("⚠️ 您目前處於「休息中 (Off-Duty)」狀態，請先點擊上方按鈕打卡上班！", "error"); 
+            return; 
+        }
 
         let hasActive = false;
         for (let key in ordersData) {
