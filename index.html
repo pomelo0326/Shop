@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v7.1</title>
+    <title>翔毅車業預定系統 v7.2</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -118,9 +118,9 @@
 </head>
 <body>
 
-<!-- 新增：提示音效標籤 -->
-<audio id="audio-new-order" src="http://googleusercontent.com/file_content/1" preload="auto"></audio>
-<audio id="audio-accept-order" src="http://googleusercontent.com/file_content/2" preload="auto"></audio>
+<!-- 新增：提示音效標籤 (請確保檔案與此 HTML 處於同一層級) -->
+<audio id="audio-new-order" src="./進單鈴聲.mp3" preload="auto"></audio>
+<audio id="audio-accept-order" src="./接受訂單鈴聲.mp3" preload="auto"></audio>
 
 <div class="modal-overlay" id="modal-overlay"></div>
 <div id="custom-modal">
@@ -160,6 +160,16 @@
         <div id="item-list" class="checkbox-group">
             <p style="color:#666; font-size:12px; text-align:center; padding:10px;">請先選擇類別</p>
         </div>
+
+        <!-- 🚗 顧客體驗升級：車輛/財產資訊欄 -->
+        <div id="car-info-group" style="margin-top: 15px; display: none;">
+            <label>🚗 車輛/財產資訊與備註</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="pPlate" placeholder="請輸入車牌號碼" style="margin: 4px 0;">
+                <input type="text" id="pCarModel" placeholder="請輸入車款名稱" style="margin: 4px 0;">
+            </div>
+            <input type="text" id="pRemarks" placeholder="選填：給技師的特殊施工備註" style="margin: 4px 0;">
+        </div>
         
         <div id="calc-section" style="display:none;">
             <div id="total-calc-hint" class="calc-hint"></div>
@@ -185,8 +195,8 @@
     <!-- 老闆登入 -->
     <div id="login-view" style="display:none;">
         <h3>👑 老闆後台登入</h3>
-        <input type="text" id="aUser" placeholder="老闆帳號">
-        <input type="password" id="aPass" placeholder="老闆密碼">
+        <input type="text" id="aUser" placeholder="老闆帳號 ">
+        <input type="password" id="aPass" placeholder="老闆密碼 ">
         <button onclick="authAdmin()" style="background:var(--accent); color:white; font-weight:bold;">登入</button>
         <button style="background:var(--row-bg); color:var(--text); border:1px solid var(--border-color);" onclick="location.reload()">返回</button>
     </div>
@@ -268,7 +278,7 @@
             </div>
         </div>
 
-        <!-- 3. 老闆 - 員工帳號管理 (新增工時查詢按鈕) -->
+        <!-- 3. 老闆 - 員工帳號管理 -->
         <div id="admin-page-employees" style="display:none;">
             <div class="cat-card">
                 <h4 style="margin-top:0; color:var(--accent);">新增員工</h4>
@@ -391,7 +401,7 @@
                 <h4 style="color:#e74c3c; margin-top:0;">🚨 道路救援即時回報</h4>
                 <label>選擇出勤方案</label>
                 <select id="rs-plan">
-                    <option value="30000">親自到店維修 ($30,000)</option>
+                    <option value="30000">親自到店維修 ($30000)</option>
                     <option value="150000">市區區域救援 ($150,000)</option>
                     <option value="200000">中部區域救援 ($200,000)</option>
                     <option value="250000">北部區域救援 ($250,000)</option>
@@ -400,7 +410,7 @@
                 </select>
                 <label style="display:flex; align-items:center; gap:8px; margin-top:15px; cursor:pointer;">
                     <input type="checkbox" id="rs-danger" style="width:auto; margin:0;"> 
-                    <span style="color:#e74c3c; font-weight:bold;">危險區域 (紅圈) 出勤 +$250,000</span>
+                    <span style="color:#e74c3c; font-weight:bold;">危險區域 (紅圈) 出勤 +$150,000</span>
                 </label>
                 <p style="font-size:11px; color:#aaa; margin-top:10px; line-height:1.6;">
                     * 道路救援直接以「已確認完成」形式計入薪資與本週收入。<br>
@@ -410,12 +420,12 @@
             </div>
         </div>
         
-        <button style="background:var(--row-bg); color:var(--text); margin-top:20px; border:1px solid var(--border-color);" onclick="location.reload()">登出 / 返回大廳</button>
+        <button style="background:var(--row-bg); color:var(--text); margin-top:20px; border:1px solid var(--border-color);" onclick="handleLogout()">登出 / 返回大廳</button>
     </div>
 </div>
 
 <script>
-    // === 🛠️ 優先宣告時間與週別 Helper 函式，防止 CEF 環境 Scope 提升失敗報錯 ===
+    // === 🛠️ 優先宣告時間與週別 Helper 函式 ===
     function getWeekStartTimestamp() {
         let now = new Date(), currentDay = now.getDay();
         let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1);
@@ -436,7 +446,7 @@
         return y + '-' + m + '-' + day;
     }
 
-    // === 主題切換 (🌓 亮/暗色主題切換) ===
+    // === 主題切換 ===
     function toggleTheme() {
         let html = document.documentElement;
         let currentTheme = html.getAttribute("data-theme");
@@ -450,11 +460,43 @@
         if (chartWeekly || chartCategory) renderCharts(globalDailyData, globalCatData);
     }
     
-    // 初始化主題
     (function() {
         let savedTheme = localStorage.getItem("xiangyi_theme");
         if (savedTheme === "light") { document.documentElement.setAttribute("data-theme", "light"); }
     })();
+
+    // 🔊 解鎖瀏覽器音效 (點擊任意處觸發一次)
+    document.addEventListener('click', () => {
+        const audioNewOrder = document.getElementById('audio-new-order');
+        const audioAcceptOrder = document.getElementById('audio-accept-order');
+        if (audioNewOrder && audioNewOrder.paused) {
+            audioNewOrder.play().then(() => { audioNewOrder.pause(); audioNewOrder.currentTime = 0; }).catch(e => {});
+        }
+        if (audioAcceptOrder && audioAcceptOrder.paused) {
+            audioAcceptOrder.play().then(() => { audioAcceptOrder.pause(); audioAcceptOrder.currentTime = 0; }).catch(e => {});
+        }
+    }, { once: true });
+
+    // 🔒 關閉網頁自動下班防呆機制
+    window.addEventListener('beforeunload', function (e) {
+        if (currentLoggedUserType === 'emp' && currentEmpId) {
+            let emp = empData[currentEmpId];
+            if (emp && emp.onDuty) {
+                let now = Date.now();
+                let dateStr = getWeekIdStr(now);
+                let updates = {};
+                updates[`employees/${currentEmpId}/onDuty`] = false;
+                let lastIn = emp.lastClockIn;
+                if (lastIn) {
+                    let durationMins = Math.floor((now - lastIn) / 60000);
+                    let existingMins = (emp.dutyLogs && emp.dutyLogs[dateStr]) ? emp.dutyLogs[dateStr].minutes : 0;
+                    updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+                }
+                // 使用 Firebase 進行背景強制更新
+                db.ref().update(updates);
+            }
+        }
+    });
 
     const CLIENT_ID = '1496839420521742367'; 
     const REDIRECT_URI = window.location.href.split('#')[0]; 
@@ -482,12 +524,10 @@
     let currentLoggedUserType = null; 
     let currentEmpId = null;
 
-    // 音效通知狀態追蹤變數
     let isFirstLoad = true;
     let lastPendingCount = 0;
     let myLastOrderStatus = {};
 
-    // 圖表全域緩存
     let chartWeekly = null;
     let chartCategory = null;
     let globalDailyData = {};
@@ -537,7 +577,6 @@
         document.getElementById('modal-overlay').style.display = 'none';
     }
 
-    // 啟動監聽
     window.onload = () => {
         const hash = new URLSearchParams(window.location.hash.slice(1));
         const token = hash.get('access_token');
@@ -550,6 +589,7 @@
                 document.getElementById('user-name').innerText = res.username; 
                 document.getElementById('user-id-display').innerText = `ID: ${res.id}`; 
                 
+                document.getElementById('car-info-group').style.display = 'block';
                 document.getElementById('customer-progress-section').style.display = 'block';
                 refreshAllCalculations(); 
             }).catch(e => console.error("Discord Login Error:", e));
@@ -564,7 +604,6 @@
         db.ref('expenses').on('value', s => { expensesData = s.val() || {}; refreshFinanceUI(); });
         db.ref('paid_weeks').on('value', s => { paidWeeksData = s.val() || {}; refreshAllCalculations(); });
         
-        // 核心：訂單變化監聽，加入音效與通知系統
         db.ref('orders').on('value', s => { 
             ordersData = s.val() || {}; 
             
@@ -572,12 +611,10 @@
                 let currentPendingCount = 0;
                 Object.values(ordersData).forEach(o => {
                     if (o.status === 'pending') currentPendingCount++;
-                    
-                    // 檢查顧客的訂單狀態是否有改變 (觸發接受訂單鈴聲)
                     if (userData && o.customerId === userData.id) {
                         let lastStatus = myLastOrderStatus[o.id];
                         if (lastStatus === 'pending' && o.status === 'processing') {
-                            document.getElementById('audio-accept-order').play().catch(e=>console.log(e));
+                            document.getElementById('audio-accept-order').play().catch(e=>{});
                             showToast(`🟡 您的訂單已被技師 ${o.mechanicName || '未知'} 接受囉！`, 'success');
                         } else if (lastStatus === 'processing' && o.status === 'completed') {
                             showToast(`🟢 您的車輛已完工結算！請至車廠取車。`, 'success');
@@ -586,16 +623,14 @@
                     }
                 });
 
-                // 檢查是否有新的 pending 訂單 (觸發進單鈴聲，限員工/老闆)
                 if (currentLoggedUserType === 'emp' || currentLoggedUserType === 'boss') {
                     if (currentPendingCount > lastPendingCount) {
-                        document.getElementById('audio-new-order').play().catch(e=>console.log(e));
+                        document.getElementById('audio-new-order').play().catch(e=>{});
                         showToast('🔔 有新的待接訂單進來囉！', 'info');
                     }
                 }
                 lastPendingCount = currentPendingCount;
             } else {
-                // 初次載入，設定初始狀態，不播放聲音
                 let pCount = 0;
                 Object.values(ordersData).forEach(o => {
                     if (o.status === 'pending') pCount++;
@@ -604,7 +639,6 @@
                 lastPendingCount = pCount;
                 isFirstLoad = false;
             }
-
             refreshAllCalculations(); 
         });
     };
@@ -705,7 +739,6 @@
         if (isNaN(nv) || nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
     }
 
-    // 計算總價 - 強制數值轉換防呆與視覺修復
     function calcTotalCost() {
         let catId = document.getElementById('pCat').value; if (!catId) return;
         let cat = storeData[catId], total = 0, hintHtml = '<b>📌 計價細目明細：</b><br>';
@@ -741,7 +774,6 @@
         else { hintEl.style.display = 'none'; document.getElementById('pPrice').value = ''; }
     }
 
-    // --- Discord Webhook 狀態完美同步模組 (支援討論串網址) ---
     async function updateDiscordWebhook(order, statusText, color, mechanicName) {
         if (!order.webhookUrl || !order.messageId || !order.embedData) return;
         try {
@@ -772,7 +804,6 @@
                 embed.fields.push({ name: "🛠️ 接單員工", value: mechanicName || "尚未接單", inline: true });
             }
 
-            // 完美處理包含 thread_id 的 Discord Webhook 網址
             let urlParts = order.webhookUrl.split('?');
             let baseUrl = urlParts[0];
             let queryParams = urlParts.length > 1 ? ('?' + urlParts[1]) : '';
@@ -788,7 +819,6 @@
         }
     }
 
-    // 訂單送出
     async function sendOrder() {
         if (!userData) { showToast("請先點擊上方按鈕，完成 Discord 帳號聯動驗證後再送出預定！", "error"); return; }
         let catId = document.getElementById('pCat').value; if (!catId) { showToast("請選擇業務類別", "error"); return; }
@@ -826,9 +856,12 @@
                 if (i.type==='custom') valStr += ` (資產 $${(Number(i.customAssetVal)||0).toLocaleString()})`;
                 return `${i.name}  (${valStr})`;
             });
-            
-            let webhookUrl = cat.webhook || '';
 
+            // 加入車牌資訊
+            let pPlate = document.getElementById('pPlate').value.trim() || '未填寫';
+            let pCarModel = document.getElementById('pCarModel').value.trim() || '未填寫';
+            let pRemarks = document.getElementById('pRemarks').value.trim() || '無';
+            
             let newOrder = {
                 id: 'ORD-' + Date.now(),
                 orderNo: orderNo,
@@ -843,9 +876,12 @@
                 customerId: userData.id, 
                 customerName: userData.global_name || userData.username || '未知客戶', 
                 discordAvatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png',
+                plate: pPlate,
+                carModel: pCarModel,
+                remarks: pRemarks,
                 status: 'pending',
                 timestamp: Date.now(),
-                webhookUrl: webhookUrl,
+                webhookUrl: cat.webhook || '',
                 messageId: ''
             };
 
@@ -855,6 +891,7 @@
                 fields: [
                     { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
                     { name: "💰 總金額", value: `**$${computedPrice.toLocaleString()}**`, inline: true },
+                    { name: "🚗 車輛資訊", value: `車牌: \`${pPlate}\`\n車款: \`${pCarModel}\`\n備註: ${pRemarks}`, inline: false },
                     { name: "📋 服務明細", value: "```\n" + detailsStrArray.join("\n") + "\n```" },
                     { name: "🔴 處理狀態", value: "待接訂單" },
                     { name: "🛠️ 接單員工", value: "尚未接單", inline: true }
@@ -864,15 +901,11 @@
             };
             
             newOrder.embedData = embedPayload;
-            newOrder.webhookUrl = webhookUrl;
 
-            // 完美處理包含 thread_id 的 Discord Webhook 網址
-            if (webhookUrl && webhookUrl.trim() !== '') {
+            if (newOrder.webhookUrl.trim() !== '') {
                 try {
-                    let urlParts = webhookUrl.split('?');
-                    let baseUrl = urlParts[0];
-                    let queryParams = urlParts.length > 1 ? ('&' + urlParts[1]) : '';
-                    let fetchUrl = baseUrl + '?wait=true' + queryParams;
+                    let urlParts = newOrder.webhookUrl.split('?');
+                    let fetchUrl = urlParts[0] + '?wait=true' + (urlParts.length > 1 ? '&' + urlParts[1] : '');
                     
                     let res = await fetch(fetchUrl, {
                         method: 'POST',
@@ -898,7 +931,6 @@
         }
     }
 
-    // --- 登入與切換控制 ---
     function showLogin(type) { 
         document.getElementById('player-view').style.display='none'; 
         if(type==='boss') {
@@ -930,6 +962,13 @@
                 found = true;
                 currentLoggedUserType = 'emp';
                 currentEmpId = id;
+                
+                // 🛑 v7.2 防呆登入：強制設定為下班狀態
+                if (empData[id].onDuty) {
+                    db.ref(`employees/${id}/onDuty`).set(false);
+                    empData[id].onDuty = false;
+                }
+
                 showToast(`🛠️ 歡迎回來，${empData[id].nickname}`, "success");
                 refreshAllCalculations(); 
                 enterAdmin();
@@ -958,7 +997,33 @@
         if (page === 'roles') loadRolePerms(); 
     }
 
-    // 員工打卡邏輯 (紀錄工時)
+    // --- 防呆：員工安全登出系統 ---
+    function handleLogout() {
+        if (currentLoggedUserType === 'emp' && currentEmpId) {
+            let e = empData[currentEmpId];
+            if (e && e.onDuty) {
+                showToast('⚠️ 尚未下班！系統正為您自動結算工時...', 'info');
+                
+                let now = Date.now();
+                let dateStr = getWeekIdStr(now);
+                let updates = {};
+                updates[`employees/${currentEmpId}/onDuty`] = false;
+                let lastIn = e.lastClockIn;
+                if (lastIn) {
+                    let durationMins = Math.floor((now - lastIn) / 60000);
+                    let existingMins = (e.dutyLogs && e.dutyLogs[dateStr]) ? e.dutyLogs[dateStr].minutes : 0;
+                    updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+                }
+                
+                db.ref().update(updates).then(() => {
+                    location.reload();
+                });
+                return; // 等待寫入完成
+            }
+        }
+        location.reload();
+    }
+
     function toggleDuty(onDuty) {
         if (!currentEmpId || currentEmpId === 'boss') return;
         
@@ -969,10 +1034,8 @@
         updates[`employees/${currentEmpId}/onDuty`] = onDuty;
         
         if (onDuty) {
-            // 打卡上班，記錄時間
             updates[`employees/${currentEmpId}/lastClockIn`] = now;
         } else {
-            // 打卡下班，計算時長
             let lastIn = empData[currentEmpId].lastClockIn;
             if (lastIn) {
                 let durationMins = Math.floor((now - lastIn) / 60000);
@@ -987,7 +1050,6 @@
         });
     }
 
-    // 查看員工打卡紀錄 (老闆專用)
     function viewDutyLogs(empId) {
         let e = empData[empId];
         if (!e) return;
@@ -1020,7 +1082,6 @@
         document.getElementById('modal-overlay').style.display = 'block';
     }
 
-    // --- 圖表繪製 ---
     function renderCharts(dailyData, catData) {
         let tc = document.documentElement.getAttribute('data-theme') === 'light' ? '#333' : '#ccc';
         Chart.defaults.color = tc;
@@ -1238,13 +1299,11 @@
         let now = Date.now();
         const RETAIN_TIME_MS = 3 * 24 * 60 * 60 * 1000; 
 
-        // 老闆圖表用
         globalDailyData = { '週日':0, '週一':0, '週二':0, '週三':0, '週四':0, '週五':0, '週六':0 };
         globalCatData = {};
 
         let sortedOrders = Object.values(ordersData).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-        // 更新員工打卡徽章
         let curEmp = empData[currentEmpId];
         let badgeEl = document.getElementById('duty-status-badge');
         if (badgeEl && curEmp) {
@@ -1270,6 +1329,7 @@
                                 ${cBadge}
                             </div>
                             <div style="font-size: 12px; color: #888; line-height: 1.5;">
+                                車牌：${o.plate || '未填寫'}<br>
                                 項目：${(o.details && o.details.length > 0) ? o.details.join(', ') : '無'}<br>
                                 時間：${new Date(t).toLocaleString()}
                             </div>
@@ -1277,7 +1337,7 @@
                     `;
                 }
 
-                // == 1. 待接單與處理中渲染 (員工大廳) ==
+                // == 1. 待接單與處理中渲染 ==
                 if (o.status === 'pending') {
                     if (currentLoggedUserType === 'emp') {
                         let eRole = null;
@@ -1299,7 +1359,7 @@
                                         <button onclick="cancelOrder('${o.id}')" style="background:#c0392b; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">取消訂單</button>
                                     </div>
                                 </div>
-                                <div style="font-size:13px; color:var(--text);">總金額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></div>
+                                <div style="font-size:13px; color:var(--text);">車牌: <b style="color:#3498db">${o.plate || '未填寫'}</b> | 總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></div>
                                 <div style="font-size:11px; color:#aaa;">預定人: ${o.customerName || o.discordName || '未錄入'}</div>
                                 <div style="font-size:11px; color:#888;">${o.timestamp ? new Date(o.timestamp).toLocaleString() : '未知時間'}</div>
                             </div>
@@ -1326,6 +1386,7 @@
                             <div style="font-size:13px; color:var(--text); background:rgba(0,0,0,0.1); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
                                 👤 <b>客戶名稱:</b> <span style="color:var(--accent); font-weight:bold;">${o.customerName || o.discordName || '未錄入'}</span> 
                                 <span style="font-size:10px; color:#888;">(ID: ${o.customerId || o.discordId || '未知'})</span><br>
+                                🚗 <b>車牌/車款:</b> <span style="color:#3498db; font-weight:bold;">${o.plate || '未知'} / ${o.carModel || '未知'}</span><br>
                                 <div style="font-size:11px; color:#aaa; margin:5px 0 3px 0;">🛠️ 細項內容物調整與刪減：</div>
                                 <ul style="margin:5px 0 0 0; padding:0; font-size:12px; list-style-type:none; display:flex; flex-direction:column; gap:3px; width:100%;">
                                     ${itemsListHtml}
@@ -1341,7 +1402,7 @@
                     `;
                 }
                 
-                // == 2. 發薪、營收統計與歷史已結算區 (僅抓完成) ==
+                // == 2. 發薪、營收 ==
                 if (o.status === 'completed' || o.status === 'accepted') {
                     let priceToUse = Number(o.totalPrice || o.price || 0);
                     let orderWeekStart = getWeekStartTimestampByTime(t);
@@ -1388,7 +1449,6 @@
                         totalAmount += priceToUse;
                         weeklyIncome += (priceToUse - commAmount);
                         
-                        // 圖表資料收集
                         let dObj = new Date(t);
                         let days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
                         let dayName = days[dObj.getDay()];
@@ -1404,7 +1464,7 @@
                     }
                 }
                 
-                // == 3. 老闆的 72H 歷史大廳 ==
+                // == 3. 歷史大廳 ==
                 if (now - t <= RETAIN_TIME_MS) {
                     let badge = '';
                     let mName = o.mechanicName || '未知技師';
@@ -1414,9 +1474,9 @@
                         else mName = '尚未接單';
                     }
 
-                    if (o.status === 'pending') badge = '<span style="color:#e74c3c">未接單</span>';
-                    else if (o.status === 'processing') badge = `<span style="color:#ff9900">處理中 (${mName})</span>`;
-                    else badge = `<span style="color:#2ecc71">已完成 (${mName})</span>`;
+                    if (o.status === 'pending') badge = '<span style="color:#e74c3c; font-weight:bold;">未接單</span>';
+                    else if (o.status === 'processing') badge = `<span style="color:#ff9900; font-weight:bold;">處理中 (${mName})</span>`;
+                    else badge = `<span style="color:#2ecc71; font-weight:bold;">已完成 (${mName})</span>`;
                     
                     let subItemsHtml = '';
                     if (o.details && o.details.length > 0) {
@@ -1455,7 +1515,6 @@
             }
         });
         
-        // 更新前端進度面板
         if (userData) {
             document.getElementById('customer-progress-list').innerHTML = customerProgressHtml || '<p style="color: #888; text-align: center; margin: 10px 0; font-size:12px;">目前無 72 小時內的預訂紀錄。</p>';
         }
@@ -1476,7 +1535,6 @@
             document.getElementById('emp-my-commission').innerText = '$' + myCommission.toLocaleString();
         }
 
-        // 💥 發薪大廳分區渲染 💥
         if (document.getElementById('payroll-current-week')) {
             let cHtml = '';
             if (Object.keys(currentWeekSums).length === 0) { cHtml = '<p style="color:#666; font-size:11px; margin:0;">本週暫無技師完工累積金額</p>'; }
@@ -1631,7 +1689,6 @@
         let e = empData[currentEmpId]; let o = ordersData[id];
         if (!e || !o) return;
 
-        // 🛡️ 權限與上班狀態檢查
         if (e.onDuty !== true && e.onDuty !== "true") { 
             showToast("⚠️ 您目前處於「休息中 (Off-Duty)」狀態，請先點擊上方按鈕打卡上班！", "error"); 
             return; 
