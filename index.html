@@ -195,8 +195,8 @@
     <!-- 老闆登入 -->
     <div id="login-view" style="display:none;">
         <h3>👑 老闆後台登入</h3>
-        <input type="text" id="aUser" placeholder="老闆帳號 (pomelo)">
-        <input type="password" id="aPass" placeholder="老闆密碼 (0326)">
+        <input type="text" id="aUser" placeholder="老闆帳號 ()">
+        <input type="password" id="aPass" placeholder="老闆密碼 ()">
         <button onclick="authAdmin()" style="background:var(--accent); color:white; font-weight:bold;">登入</button>
         <button style="background:var(--row-bg); color:var(--text); border:1px solid var(--border-color);" onclick="location.reload()">返回</button>
     </div>
@@ -401,12 +401,12 @@
                 <h4 style="color:#e74c3c; margin-top:0;">🚨 道路救援即時回報</h4>
                 <label>選擇出勤方案</label>
                 <select id="rs-plan">
-                    <option value="100000">親自到店維修 ($100,000)</option>
+                    <option value="30000">親自到店維修 ($100,000)</option>
                     <option value="150000">市區區域救援 ($150,000)</option>
-                    <option value="250000">中部區域救援 ($250,000)</option>
-                    <option value="350000">北部區域救援 ($350,000)</option>
-                    <option value="450000">深山區域救援 ($450,000)</option>
-                    <option value="650000">非本島區域救援 ($650,000)</option>
+                    <option value="200000">中部區域救援 ($200,000)</option>
+                    <option value="250000">北部區域救援 ($250,000)</option>
+                    <option value="500000">深山區域救援 ($500,000)</option>
+                    <option value="600000">非本島區域救援 ($600,000)</option>
                 </select>
                 <label style="display:flex; align-items:center; gap:8px; margin-top:15px; cursor:pointer;">
                     <input type="checkbox" id="rs-danger" style="width:auto; margin:0;"> 
@@ -940,11 +940,12 @@
             document.getElementById('login-view').style.display='none'; 
             document.getElementById('emp-login-view').style.display='block';
         }
+    
     }
     
     function authAdmin() {
         let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
-        if (u === 'pomelo' && p === '0326') { 
+        if (u === 'pomelo' && p === '960326') { 
             currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
             showToast("👑 老闆登入成功", "success"); 
             refreshAllCalculations(); 
