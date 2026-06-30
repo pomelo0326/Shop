@@ -195,8 +195,8 @@
     <!-- 老闆登入 -->
     <div id="login-view" style="display:none;">
         <h3>👑 老闆後台登入</h3>
-        <input type="text" id="aUser" placeholder="老闆帳號 ">
-        <input type="password" id="aPass" placeholder="老闆密碼 ">
+        <input type="text" id="aUser" placeholder="老闆帳號 (pomelo)">
+        <input type="password" id="aPass" placeholder="老闆密碼 (0326)">
         <button onclick="authAdmin()" style="background:var(--accent); color:white; font-weight:bold;">登入</button>
         <button style="background:var(--row-bg); color:var(--text); border:1px solid var(--border-color);" onclick="location.reload()">返回</button>
     </div>
@@ -401,12 +401,12 @@
                 <h4 style="color:#e74c3c; margin-top:0;">🚨 道路救援即時回報</h4>
                 <label>選擇出勤方案</label>
                 <select id="rs-plan">
-                    <option value="30000">親自到店維修 ($30000)</option>
+                    <option value="100000">親自到店維修 ($100,000)</option>
                     <option value="150000">市區區域救援 ($150,000)</option>
-                    <option value="200000">中部區域救援 ($200,000)</option>
-                    <option value="250000">北部區域救援 ($250,000)</option>
-                    <option value="500000">深山區域救援 ($500,000)</option>
-                    <option value="600000">非本島區域救援 ($600,000)</option>
+                    <option value="250000">中部區域救援 ($250,000)</option>
+                    <option value="350000">北部區域救援 ($350,000)</option>
+                    <option value="450000">深山區域救援 ($450,000)</option>
+                    <option value="650000">非本島區域救援 ($650,000)</option>
                 </select>
                 <label style="display:flex; align-items:center; gap:8px; margin-top:15px; cursor:pointer;">
                     <input type="checkbox" id="rs-danger" style="width:auto; margin:0;"> 
@@ -944,7 +944,7 @@
     
     function authAdmin() {
         let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
-        if (u === 'pomelo' && p === '960326') { 
+        if (u === 'pomelo' && p === '0326') { 
             currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
             showToast("👑 老闆登入成功", "success"); 
             refreshAllCalculations(); 
@@ -1651,19 +1651,32 @@
         if (o.details.length <= 1) { return showToast("至少需保留一個項目！", "error"); }
 
         showCustomConfirm("刪減此服務細項？", "確定要移除？金額與分成將連動重算。", async () => {
-            let itemStr = o.details[itemIndex];
-            let priceMatch = itemStr.match(/\$(\d+)/); let subtractedPrice = 0;
-            if (priceMatch && priceMatch[1]) { subtractedPrice = parseInt(priceMatch[1]) || 0; } 
-            else { let retailMatch = itemStr.match(/\(\$(\d+)\)/); if (retailMatch && retailMatch[1]) subtractedPrice = parseInt(retailMatch[1]) || 0; }
+            let subtractedPrice = 0;
+            // 優先從結構化的 items 陣列中抓取精確金額，避免字串解析錯誤
+            if (o.items && o.items[itemIndex] && typeof o.items[itemIndex].calcPrice !== 'undefined') {
+                subtractedPrice = Number(o.items[itemIndex].calcPrice) || 0;
+            } else {
+                // 備用方案：從字串中萃取 (修復千分位逗號導致只扣部分金額的問題)
+                let itemStr = o.details[itemIndex];
+                let priceMatch = itemStr.match(/\$([\d,]+)/);
+                if (priceMatch && priceMatch[1]) { 
+                    subtractedPrice = parseInt(priceMatch[1].replace(/,/g, '')) || 0; 
+                } 
+            }
 
             let newDetails = [];
+            let newItems = [];
             for (let i = 0; i < o.details.length; i++) {
-                if (i !== itemIndex) newDetails.push(o.details[i]);
+                if (i !== itemIndex) {
+                    newDetails.push(o.details[i]);
+                    if (o.items && o.items[i]) newItems.push(o.items[i]);
+                }
             }
             
             let oldPrice = Number(o.totalPrice || o.price || 0);
             let newPrice = Math.max(0, oldPrice - subtractedPrice);
 
+            let oldCommission = Number(o.commission || 0);
             let newCommission = 0;
             if (o.status === 'accepted' || o.status === 'completed' || o.status === 'processing') {
                 let worker = empData[o.acceptedBy || o.mechanicId];
@@ -1676,9 +1689,26 @@
 
             let updates = {};
             updates[`orders/${orderId}/details`] = newDetails;
+            if (o.items) updates[`orders/${orderId}/items`] = newItems; // 同步更新 items 陣列
             updates[`orders/${orderId}/totalPrice`] = newPrice;
             updates[`orders/${orderId}/price`] = newPrice;
             updates[`orders/${orderId}/commission`] = newCommission;
+
+            // 修復：已完工訂單刪減細項時，同步正確扣除公款
+            if (o.status === 'completed') {
+                let currentBalance = Number(fundsData.balance || 0);
+                let fundDeduction = 0;
+                if (o.isPaid) {
+                    // 已結算薪資：老闆當初只拿了利潤(總額-分成)，退款也是退差額的利潤
+                    let oldNet = oldPrice - oldCommission;
+                    let newNet = newPrice - newCommission;
+                    fundDeduction = oldNet - newNet;
+                } else {
+                    // 未結算薪資：全額都在公款庫中，直接扣除減少的總價
+                    fundDeduction = subtractedPrice;
+                }
+                updates[`funds/balance`] = currentBalance - fundDeduction;
+            }
 
             await db.ref().update(updates);
             showToast("✅ 細項刪減成功！", "success");
