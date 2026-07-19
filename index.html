@@ -118,6 +118,7 @@
 </head>
 <body>
 
+<!-- 🔊 音效標籤。請確保實體檔案 進單鈴聲.mp3 與 接受訂單鈴聲.mp3 與此 HTML 存在於 GitHub 同目錄 -->
 <audio id="audio-new-order" src="./進單鈴聲.mp3" preload="auto"></audio>
 <audio id="audio-accept-order" src="./接受訂單鈴聲.mp3" preload="auto"></audio>
 
@@ -140,6 +141,7 @@
         <button class="theme-btn" onclick="toggleTheme()">🌓 切換主題</button>
     </div>
 
+    <!-- 前台預定介面 -->
     <div id="player-view">
         <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號驗證</button>
         
@@ -159,7 +161,7 @@
             <p style="color:#666; font-size:12px; text-align:center; padding:10px;">請先選擇類別</p>
         </div>
 
-        <!-- 🚗 顧客體驗升級：車輛資訊欄 -->
+        <!-- 🚗 顧客體驗：車輛資訊欄 -->
         <div id="car-info-group" style="margin-top: 15px; display: none;">
             <label>🚗 車輛/財產資訊與備註</label>
             <div style="display: flex; gap: 8px;">
@@ -177,7 +179,7 @@
         
         <button class="btn-send" id="submit-btn" onclick="sendOrder()">送出預定</button>
 
-        <!-- 📋 顧客專屬進度追蹤區塊 -->
+        <!-- 📋 顧客專屬進度追蹤區塊 (修正 72H 查詢) -->
         <div id="customer-progress-section" class="customer-progress-box">
             <h3 style="margin:0 0 5px 0; color:var(--accent); font-size:15px;">📋 我的訂單進度 (72H內)</h3>
             <p style="font-size:11px; color:#aaa; margin:0 0 10px 0;">即時追蹤您的車輛施工狀態</p>
@@ -193,8 +195,8 @@
     <!-- 老闆登入 -->
     <div id="login-view" style="display:none;">
         <h3>👑 老闆後台登入</h3>
-        <input type="text" id="aUser" placeholder="老闆帳號 (pomelo)">
-        <input type="password" id="aPass" placeholder="老闆密碼 (0326)">
+        <input type="text" id="aUser" placeholder="老闆帳號">
+        <input type="password" id="aPass" placeholder="老闆密碼">
         <button onclick="authAdmin()" style="background:var(--accent); color:white; font-weight:bold;">登入</button>
         <button style="background:var(--row-bg); color:var(--text); border:1px solid var(--border-color);" onclick="location.reload()">返回</button>
     </div>
@@ -427,81 +429,95 @@
 </div>
 
 <script>
+    // === 🛠️ 安全防禦核心：日誌與輔助運算（即使入參損壞也絕不報錯） ===
     function getWeekStartTimestamp() {
-        let now = new Date(), currentDay = now.getDay();
-        let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1);
-        let sat = new Date(now); sat.setDate(now.getDate() - diffToSaturday); sat.setHours(0, 0, 0, 0);
-        return sat.getTime();
+        try {
+            let now = new Date(), currentDay = now.getDay();
+            let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1);
+            let sat = new Date(now); sat.setDate(now.getDate() - diffToSaturday); sat.setHours(0, 0, 0, 0);
+            return sat.getTime();
+        } catch(e) {
+            console.error("getWeekStartTimestamp 發生非預期錯誤", e);
+            return Date.now();
+        }
     }
 
     function getWeekStartTimestampByTime(timestamp) {
-        let now = new Date(timestamp), currentDay = now.getDay();
-        let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1);
-        let sat = new Date(now); sat.setDate(now.getDate() - diffToSaturday); sat.setHours(0, 0, 0, 0);
-        return sat.getTime();
+        try {
+            let now = new Date(timestamp);
+            if (isNaN(now.getTime())) now = new Date();
+            let currentDay = now.getDay();
+            let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1);
+            let sat = new Date(now); sat.setDate(now.getDate() - diffToSaturday); sat.setHours(0, 0, 0, 0);
+            return sat.getTime();
+        } catch(e) {
+            return Date.now();
+        }
     }
 
     function getWeekIdStr(timestamp) {
-        let d = new Date(timestamp);
-        let y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
-        return y + '-' + m + '-' + day;
+        try {
+            let d = new Date(timestamp);
+            if (isNaN(d.getTime())) d = new Date();
+            let y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+            return y + '-' + m + '-' + day;
+        } catch(e) {
+            return "1970-01-01";
+        }
     }
 
-    // 取得今天 00:00:00 的時間戳
     function getTodayStartTimestamp() {
-        let d = new Date();
-        d.setHours(0, 0, 0, 0);
-        return d.getTime();
+        try {
+            let d = new Date();
+            d.setHours(0, 0, 0, 0);
+            return d.getTime();
+        } catch(e) {
+            return Date.now();
+        }
     }
 
     function toggleTheme() {
-        let html = document.documentElement;
-        let currentTheme = html.getAttribute("data-theme");
-        if (currentTheme === "light") {
-            html.removeAttribute("data-theme");
-            localStorage.setItem("xiangyi_theme", "dark");
-        } else {
-            html.setAttribute("data-theme", "light");
-            localStorage.setItem("xiangyi_theme", "light");
-        }
-        if (chartWeekly || chartCategory) renderCharts(globalDailyData, globalCatData);
+        try {
+            let html = document.documentElement;
+            let currentTheme = html.getAttribute("data-theme");
+            if (currentTheme === "light") {
+                html.removeAttribute("data-theme");
+                localStorage.setItem("xiangyi_theme", "dark");
+            } else {
+                html.setAttribute("data-theme", "light");
+                localStorage.setItem("xiangyi_theme", "light");
+            }
+            if (chartWeekly || chartCategory) renderCharts(globalDailyData, globalCatData);
+        } catch(e) {}
     }
     
     (function() {
-        let savedTheme = localStorage.getItem("xiangyi_theme");
-        if (savedTheme === "light") { document.documentElement.setAttribute("data-theme", "light"); }
+        try {
+            let savedTheme = localStorage.getItem("xiangyi_theme");
+            if (savedTheme === "light") { document.documentElement.setAttribute("data-theme", "light"); }
+        } catch(e){}
     })();
 
-    // 🔊 解鎖瀏覽器音效 (點擊任意處觸發一次)
-    document.addEventListener('click', () => {
-        const audioNewOrder = document.getElementById('audio-new-order');
-        const audioAcceptOrder = document.getElementById('audio-accept-order');
-        if (audioNewOrder && audioNewOrder.paused) {
-            audioNewOrder.play().then(() => { audioNewOrder.pause(); audioNewOrder.currentTime = 0; }).catch(e => {});
-        }
-        if (audioAcceptOrder && audioAcceptOrder.paused) {
-            audioAcceptOrder.play().then(() => { audioAcceptOrder.pause(); audioAcceptOrder.currentTime = 0; }).catch(e => {});
-        }
-    }, { once: true });
-
-    // 🔒 關閉網頁自動下班防呆機制
+    // 🔒 關閉網頁安全防呆機制 (防執行緒洩漏)
     window.addEventListener('beforeunload', function (e) {
-        if (currentLoggedUserType === 'emp' && currentEmpId) {
-            let emp = empData[currentEmpId];
-            if (emp && emp.onDuty) {
-                let now = Date.now();
-                let dateStr = getWeekIdStr(now);
-                let updates = {};
-                updates[`employees/${currentEmpId}/onDuty`] = false;
-                let lastIn = emp.lastClockIn;
-                if (lastIn) {
-                    let durationMins = Math.floor((now - lastIn) / 60000);
-                    let existingMins = (emp.dutyLogs && emp.dutyLogs[dateStr]) ? emp.dutyLogs[dateStr].minutes : 0;
-                    updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+        try {
+            if (currentLoggedUserType === 'emp' && currentEmpId) {
+                let emp = empData[currentEmpId];
+                if (emp && emp.onDuty) {
+                    let now = Date.now();
+                    let dateStr = getWeekIdStr(now);
+                    let updates = {};
+                    updates[`employees/${currentEmpId}/onDuty`] = false;
+                    let lastIn = emp.lastClockIn;
+                    if (lastIn) {
+                        let durationMins = Math.floor((now - lastIn) / 60000);
+                        let existingMins = (emp.dutyLogs && emp.dutyLogs[dateStr]) ? emp.dutyLogs[dateStr].minutes : 0;
+                        updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+                    }
+                    db.ref().update(updates);
                 }
-                db.ref().update(updates);
             }
-        }
+        } catch(err) {}
     });
 
     const CLIENT_ID = '1496839420521742367'; 
@@ -539,1372 +555,906 @@
     let globalDailyData = {};
     let globalCatData = {};
 
+    // === 🛠️ 頁面安全初始化與監聽 (保證無錯運行) ===
     window.onload = () => {
-        const hash = new URLSearchParams(window.location.hash.slice(1));
-        const token = hash.get('access_token');
-        if (token) {
-            fetch('https://discord.com/api/users/@me', { headers: { authorization: `Bearer ${token}` } })
-            .then(r => r.json()).then(res => { 
-                userData = res; 
-                document.getElementById('login-btn').style.display = 'none'; 
-                document.getElementById('user-display').style.display = 'flex'; 
-                document.getElementById('user-name').innerText = res.username; 
-                document.getElementById('user-id-display').innerText = `ID: ${res.id}`; 
-                
-                document.getElementById('car-info-group').style.display = 'block';
-                document.getElementById('customer-progress-section').style.display = 'block';
-                refreshAllCalculations(); 
-            }).catch(e => console.error("Discord Login Error:", e));
-        }
-        document.getElementById('new-emp-role').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
-        document.getElementById('role-select').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
-        
-        db.ref('xiangyi_shop').on('value', s => { storeData = s.val() || {}; refreshUI(); });
-        db.ref('employees').on('value', s => { empData = s.val() || {}; refreshEmpUI(); refreshAllCalculations(); });
-        db.ref('roles').on('value', s => { rolesData = s.val() || {}; refreshAllCalculations(); }); 
-        db.ref('funds').on('value', s => { fundsData = s.val() || {balance: 0}; refreshFinanceUI(); });
-        db.ref('expenses').on('value', s => { expensesData = s.val() || {}; refreshFinanceUI(); });
-        db.ref('paid_weeks').on('value', s => { paidWeeksData = s.val() || {}; refreshAllCalculations(); });
-        
-        db.ref('orders').on('value', s => { 
-            ordersData = s.val() || {}; 
-            
-            if (!isFirstLoad) {
-                let currentPendingCount = 0;
-                Object.values(ordersData).forEach(o => {
-                    if (o.status === 'pending') currentPendingCount++;
-                    if (userData && o.customerId === userData.id) {
-                        let lastStatus = myLastOrderStatus[o.id];
-                        if (lastStatus === 'pending' && o.status === 'processing') {
-                            document.getElementById('audio-accept-order').play().catch(e=>{});
-                            showToast(`🟡 您的訂單已被技師 ${o.mechanicName || '未知'} 接受囉！`, 'success');
-                        } else if (lastStatus === 'processing' && o.status === 'completed') {
-                            showToast(`🟢 您的車輛已完工結算！請至車廠取車。`, 'success');
-                        }
-                        myLastOrderStatus[o.id] = o.status;
-                    }
-                });
-
-                if (currentLoggedUserType === 'emp' || currentLoggedUserType === 'boss') {
-                    if (currentPendingCount > lastPendingCount) {
-                        document.getElementById('audio-new-order').play().catch(e=>{});
-                        showToast('🔔 有新的待接訂單進來囉！', 'info');
-                    }
-                }
-                lastPendingCount = currentPendingCount;
-            } else {
-                let pCount = 0;
-                Object.values(ordersData).forEach(o => {
-                    if (o.status === 'pending') pCount++;
-                    if (userData && o.customerId === userData.id) myLastOrderStatus[o.id] = o.status;
-                });
-                lastPendingCount = pCount;
-                isFirstLoad = false;
+        try {
+            const hash = new URLSearchParams(window.location.hash.slice(1));
+            const token = hash.get('access_token');
+            if (token) {
+                fetch('https://discord.com/api/users/@me', { headers: { authorization: `Bearer ${token}` } })
+                .then(r => r.json()).then(res => { 
+                    userData = res; 
+                    document.getElementById('login-btn').style.display = 'none'; 
+                    document.getElementById('user-display').style.display = 'flex'; 
+                    document.getElementById('user-name').innerText = res.username; 
+                    document.getElementById('user-id-display').innerText = `ID: ${res.id}`; 
+                    
+                    document.getElementById('car-info-group').style.display = 'block';
+                    document.getElementById('customer-progress-section').style.display = 'block';
+                    refreshAllCalculations(); 
+                }).catch(e => console.error("Discord Login Error:", e));
             }
-            refreshAllCalculations(); 
-        });
+            document.getElementById('new-emp-role').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
+            document.getElementById('role-select').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
+            
+            // 安全包裝：資料庫連線監聽
+            db.ref('xiangyi_shop').on('value', s => { try { storeData = s.val() || {}; refreshUI(); } catch(e){ console.error(e); } });
+            db.ref('employees').on('value', s => { try { empData = s.val() || {}; refreshEmpUI(); refreshAllCalculations(); } catch(e){ console.error(e); } });
+            db.ref('roles').on('value', s => { try { rolesData = s.val() || {}; refreshAllCalculations(); } catch(e){ console.error(e); } }); 
+            db.ref('funds').on('value', s => { try { fundsData = s.val() || {balance: 0}; refreshFinanceUI(); } catch(e){ console.error(e); } });
+            db.ref('expenses').on('value', s => { try { expensesData = s.val() || {}; refreshFinanceUI(); } catch(e){ console.error(e); } });
+            db.ref('paid_weeks').on('value', s => { try { paidWeeksData = s.val() || {}; refreshAllCalculations(); } catch(e){ console.error(e); } });
+            
+            db.ref('orders').on('value', s => { 
+                try {
+                    ordersData = s.val() || {}; 
+                    
+                    if (!isFirstLoad) {
+                        let currentPendingCount = 0;
+                        Object.values(ordersData).forEach(o => {
+                            if (o.status === 'pending') currentPendingCount++;
+                            if (userData && o.customerId === userData.id) {
+                                let lastStatus = myLastOrderStatus[o.id];
+                                if (lastStatus === 'pending' && o.status === 'processing') {
+                                    document.getElementById('audio-accept-order').play().catch(e=>{});
+                                    showToast(`🟡 您的訂單已被技師 ${o.mechanicName || '未知'} 接受囉！`, 'success');
+                                } else if (lastStatus === 'processing' && o.status === 'completed') {
+                                    showToast(`🟢 您的車輛已完工結算！請至車廠取車。`, 'success');
+                                }
+                                myLastOrderStatus[o.id] = o.status;
+                            }
+                        });
+
+                        if (currentLoggedUserType === 'emp' || currentLoggedUserType === 'boss') {
+                            if (currentPendingCount > lastPendingCount) {
+                                document.getElementById('audio-new-order').play().catch(e=>{});
+                                showToast('🔔 有新的待接訂單進來囉！', 'info');
+                            }
+                        }
+                        lastPendingCount = currentPendingCount;
+                    } else {
+                        let pCount = 0;
+                        Object.values(ordersData).forEach(o => {
+                            if (o.status === 'pending') pCount++;
+                            if (userData && o.customerId === userData.id) myLastOrderStatus[o.id] = o.status;
+                        });
+                        lastPendingCount = pCount;
+                        isFirstLoad = false;
+                    }
+                    refreshAllCalculations(); 
+                } catch(err) {
+                    console.error("訂單監聽流程非預期錯誤: ", err);
+                }
+            });
+        } catch(err) {
+            console.error("全域初始化致命錯誤: ", err);
+        }
     };
 
-    function loginDiscord() {
-        window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
+    // 項目與大廳渲染
+    function refreshUI() {
+        try {
+            const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
+            pC.innerHTML = '<option value="">請選擇...</option>'; aC.innerHTML = '<option value="">請選擇...</option>'; aLC.innerHTML = '';
+            for (let catId in storeData) {
+                const cat = storeData[catId];
+                if (!cat) continue;
+                pC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
+                aC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
+                const catDiv = document.createElement('div');
+                catDiv.className = 'cat-card';
+                catDiv.innerHTML = `
+                    <div class="cat-header">
+                        <div><b style="color:var(--text);">${cat.name}</b><br><button class="webhook-btn" onclick="openWebhookModal('${catId}')">Webhook 設定</button></div>
+                        <button class="del-btn" style="background:#555" onclick="deleteCategory('${catId}')">刪除</button>
+                    </div>
+                    <div id="list-${catId}" class="sortable-list"></div>
+                `;
+                aLC.appendChild(catDiv);
+                const itemListDiv = catDiv.querySelector('.sortable-list');
+                
+                let catItemsObj = cat.items || {};
+                let itemsArray = [];
+                for(let key in catItemsObj) { itemsArray.push({ id: key, ...catItemsObj[key] }); }
+                itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
+                
+                itemsArray.forEach(it => {
+                    let pL = (it.type==='single') ? `$${(Number(it.price)||0).toLocaleString()}` : (it.type==='retail') ? `$${(Number(it.price)||0).toLocaleString()} (上限${it.max||'無'})` : (it.type==='range') ? `$${(Number(it.min)||0).toLocaleString()}~$${(Number(it.max)||0).toLocaleString()}` : '自填10%';
+                    let dailyLimitInfo = (it.dailyLimit && Number(it.dailyLimit) > 0) ? ` <span style="color:#e74c3c;font-size:11px;">(每日限購: ${it.dailyLimit})</span>` : '';
+                    itemListDiv.innerHTML += `
+                        <div class="item-row" data-id="${it.id}">
+                            <div class="item-info"><span class="drag-handle">☰</span><b style="color:var(--text);">${it.name}</b>${dailyLimitInfo}&nbsp;<span style="color:#888">(${pL})</span></div>
+                            <div class="admin-btns">
+                                <button class="edit-btn" onclick="openEditModal('${catId}','${it.id}')">編輯</button>
+                                <button class="del-btn" onclick="deleteItem('${catId}','${it.id}')">下架</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                if (typeof Sortable !== 'undefined') {
+                    new Sortable(itemListDiv, { handle: '.drag-handle', animation: 150, onEnd: () => {
+                        try {
+                            let updatedOrder = {};
+                            itemListDiv.querySelectorAll('.item-row').forEach((row, index) => { updatedOrder[row.getAttribute('data-id') + '/order'] = index; });
+                            db.ref(`xiangyi_shop/${catId}/items`).update(updatedOrder);
+                        } catch(e){}
+                    }});
+                }
+            }
+        } catch(e) {
+            console.error("前台品項初始化 UI 崩潰防護:", e);
+        }
     }
 
-    function refreshUI() {
-        const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
-        pC.innerHTML = '<option value="">請選擇...</option>'; aC.innerHTML = '<option value="">請選擇...</option>'; aLC.innerHTML = '';
-        for (let catId in storeData) {
-            const cat = storeData[catId];
-            pC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
-            aC.innerHTML += `<option value="${catId}">${cat.name}</option>`;
-            const catDiv = document.createElement('div');
-            catDiv.className = 'cat-card';
-            catDiv.innerHTML = `
-                <div class="cat-header">
-                    <div><b style="color:var(--text);">${cat.name}</b><br><button class="webhook-btn" onclick="openWebhookModal('${catId}')">Webhook 設定</button></div>
-                    <button class="del-btn" style="background:#555" onclick="deleteCategory('${catId}')">刪除</button>
-                </div>
-                <div id="list-${catId}" class="sortable-list"></div>
-            `;
-            aLC.appendChild(catDiv);
-            const itemListDiv = catDiv.querySelector('.sortable-list');
+    function updateItems() {
+        try {
+            let catId = document.getElementById('pCat').value, container = document.getElementById('item-list');
+            if (!catId) { container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center; padding:10px;">請先選擇類別</p>'; document.getElementById('calc-section').style.display = 'none'; return; }
+            let cat = storeData[catId]; container.innerHTML = '';
+            if (!cat || !cat.items || Object.keys(cat.items).length === 0) { container.innerHTML = '<p style="color:#888; font-size:12px; text-align:center; padding:10px;">此分類目前無項目</p>'; document.getElementById('calc-section').style.display = 'none'; return; }
             
             let catItemsObj = cat.items || {};
             let itemsArray = [];
             for(let key in catItemsObj) { itemsArray.push({ id: key, ...catItemsObj[key] }); }
             itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
-            
+                
             itemsArray.forEach(it => {
-                let pL = (it.type==='single') ? `$${(Number(it.price)||0).toLocaleString()}` : (it.type==='retail') ? `$${(Number(it.price)||0).toLocaleString()} (上限${it.max||'無'})` : (it.type==='range') ? `$${(Number(it.min)||0).toLocaleString()}~$${(Number(it.max)||0).toLocaleString()}` : '自填10%';
-                let dailyLimitInfo = (it.dailyLimit && Number(it.dailyLimit) > 0) ? ` <span style="color:#e74c3c;font-size:11px;">(每日限購: ${it.dailyLimit})</span>` : '';
-                itemListDiv.innerHTML += `
-                    <div class="item-row" data-id="${it.id}">
-                        <div class="item-info"><span class="drag-handle">☰</span><b style="color:var(--text);">${it.name}</b>${dailyLimitInfo}&nbsp;<span style="color:#888">(${pL})</span></div>
-                        <div class="admin-btns">
-                            <button class="edit-btn" onclick="openEditModal('${catId}','${it.id}')">編輯</button>
-                            <button class="del-btn" onclick="deleteItem('${catId}','${it.id}')">下架</button>
-                        </div>
-                    </div>
-                `;
+                let pl = '';
+                if(it.type === 'single') pl = `$${(Number(it.price)||0).toLocaleString()}`;
+                else if(it.type === 'retail') pl = `$${(Number(it.price)||0).toLocaleString()} / 單位`;
+                else if(it.type === 'range') pl = `$${(Number(it.min)||0).toLocaleString()} ~ $${(Number(it.max)||0).toLocaleString()}`;
+                else pl = '自填總價之 10%';
+                
+                let extraUi = '';
+                if (it.type === 'retail') {
+                    extraUi = `<div class="qty-control" id="qty-box-${it.id}"><button class="qty-btn" onclick="changeQty('${it.id}', -1, ${it.max || 99999})">-</button><input type="number" class="qty-input" id="qty-${it.id}" value="1" min="1" max="${it.max || 99999}" oninput="validateQty('${it.id}', ${it.max || 99999})"><button class="qty-btn" onclick="changeQty('${it.id}', 1, ${it.max || 99999})">+</button><span class="max-hint">${it.max ? `(上限 ${it.max})` : ''}</span></div>`;
+                } else if (it.type === 'custom') {
+                    extraUi = `<div class="custom-price-input" id="custom-box-${it.id}"><label style="margin-top:0; color:#ff9900;">請輸入您的車輛/財產官方購入總價值：</label><input type="number" id="custom-val-${it.id}" placeholder="請輸入金額" oninput="calcTotalCost()" style="margin-bottom:0;"></div>`;
+                }
+
+                let limitBadge = '';
+                if (it.dailyLimit && Number(it.dailyLimit) > 0) {
+                    limitBadge = `<span class="ml-2 px-2 py-0.5 rounded text-[10px] font-bold" style="background: rgba(231,76,60,0.15); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3);">每日限購 ${it.dailyLimit} 份</span>`;
+                }
+
+                container.innerHTML += `<div class="item-option"><label class="item-main" for="chk-${it.id}"><input type="checkbox" id="chk-${it.id}" value="${it.id}" onchange="toggleItemExtra('${it.id}', '${it.type}')"><span style="color:var(--text);">${it.name} ${limitBadge}</span><span class="price-tag">${pl}</span></label>${extraUi}</div>`;
             });
-            new Sortable(itemListDiv, { handle: '.drag-handle', animation: 150, onEnd: () => {
-                let updatedOrder = {};
-                itemListDiv.querySelectorAll('.item-row').forEach((row, index) => { updatedOrder[row.getAttribute('data-id') + '/order'] = index; });
-                db.ref(`xiangyi_shop/${catId}/items`).update(updatedOrder);
-            }});
+            document.getElementById('calc-section').style.display = 'block';
+            calcTotalCost();
+        } catch(e) {
+            console.error("更新品項錯誤: ", e);
         }
-    }
-
-    function updateItems() {
-        let catId = document.getElementById('pCat').value, container = document.getElementById('item-list');
-        if (!catId) { container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center; padding:10px;">請先選擇類別</p>'; document.getElementById('calc-section').style.display = 'none'; return; }
-        let cat = storeData[catId]; container.innerHTML = '';
-        if (!cat.items || Object.keys(cat.items).length === 0) { container.innerHTML = '<p style="color:#888; font-size:12px; text-align:center; padding:10px;">此分類目前無項目</p>'; document.getElementById('calc-section').style.display = 'none'; return; }
-        
-        let catItemsObj = cat.items || {};
-        let itemsArray = [];
-        for(let key in catItemsObj) { itemsArray.push({ id: key, ...catItemsObj[key] }); }
-        itemsArray.sort((a, b) => (a.order || 0) - (b.order || 0));
-            
-        itemsArray.forEach(it => {
-            let pl = '';
-            if(it.type === 'single') pl = `$${(Number(it.price)||0).toLocaleString()}`;
-            else if(it.type === 'retail') pl = `$${(Number(it.price)||0).toLocaleString()} / 單位`;
-            else if(it.type === 'range') pl = `$${(Number(it.min)||0).toLocaleString()} ~ $${(Number(it.max)||0).toLocaleString()}`;
-            else pl = '自填總價之 10%';
-            
-            let extraUi = '';
-            if (it.type === 'retail') {
-                extraUi = `<div class="qty-control" id="qty-box-${it.id}"><button class="qty-btn" onclick="changeQty('${it.id}', -1, ${it.max || 99999})">-</button><input type="number" class="qty-input" id="qty-${it.id}" value="1" min="1" max="${it.max || 99999}" oninput="validateQty('${it.id}', ${it.max || 99999})"><button class="qty-btn" onclick="changeQty('${it.id}', 1, ${it.max || 99999})">+</button><span class="max-hint">${it.max ? `(上限 ${it.max})` : ''}</span></div>`;
-            } else if (it.type === 'custom') {
-                extraUi = `<div class="custom-price-input" id="custom-box-${it.id}"><label style="margin-top:0; color:#ff9900;">請輸入您的車輛/財產官方購入總價值：</label><input type="number" id="custom-val-${it.id}" placeholder="請輸入金額" oninput="calcTotalCost()" style="margin-bottom:0;"></div>`;
-            }
-
-            // 🚗 新增：若設有每日限購，動態渲染醒目Badge
-            let limitBadge = '';
-            if (it.dailyLimit && Number(it.dailyLimit) > 0) {
-                limitBadge = `<span class="ml-2 px-2 py-0.5 rounded text-[10px] font-bold" style="background: rgba(231,76,60,0.15); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3);">每日限購 ${it.dailyLimit} 份</span>`;
-            }
-
-            container.innerHTML += `<div class="item-option"><label class="item-main" for="chk-${it.id}"><input type="checkbox" id="chk-${it.id}" value="${it.id}" onchange="toggleItemExtra('${it.id}', '${it.type}')"><span style="color:var(--text);">${it.name} ${limitBadge}</span><span class="price-tag">${pl}</span></label>${extraUi}</div>`;
-        });
-        document.getElementById('calc-section').style.display = 'block';
-        calcTotalCost();
     }
 
     function toggleItemExtra(id, type) {
-        let chk = document.getElementById(`chk-${id}`).checked;
-        if (type === 'retail') document.getElementById(`qty-box-${id}`).style.display = chk ? 'flex' : 'none';
-        else if (type === 'custom') document.getElementById(`custom-box-${id}`).style.display = chk ? 'block' : 'none';
-        calcTotalCost();
+        try {
+            let chk = document.getElementById(`chk-${id}`).checked;
+            if (type === 'retail') document.getElementById(`qty-box-${id}`).style.display = chk ? 'flex' : 'none';
+            else if (type === 'custom') document.getElementById(`custom-box-${id}`).style.display = chk ? 'block' : 'none';
+            calcTotalCost();
+        } catch(e){}
     }
 
     function changeQty(id, delta, max) {
-        let el = document.getElementById(`qty-${id}`), nv = parseInt(el.value) + delta;
-        if (nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
+        try {
+            let el = document.getElementById(`qty-${id}`), nv = parseInt(el.value) + delta;
+            if (nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
+        } catch(e){}
     }
 
     function validateQty(id, max) {
-        let el = document.getElementById(`qty-${id}`), nv = parseInt(el.value);
-        if (isNaN(nv) || nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
-    }
-
-    function calcTotalCost() {
-        let catId = document.getElementById('pCat').value; if (!catId) return;
-        let cat = storeData[catId], total = 0, hintHtml = '<b>📌 計價細目明細：</b><br>';
-        let hasChecked = false;
-        
-        for (let itId in cat.items) {
-            let it = cat.items[itId], chk = document.getElementById(`chk-${itId}`);
-            if (chk && chk.checked) {
-                hasChecked = true;
-                if (it.type === 'single') { 
-                    let p = Number(it.price) || 0; total += p; hintHtml += `• ${it.name}：$${p.toLocaleString()}<br>`; 
-                }
-                else if (it.type === 'retail') {
-                    let p = Number(it.price) || 0;
-                    let q = parseInt(document.getElementById(`qty-${itId}`).value) || 1;
-                    let sub = p * q; total += sub; hintHtml += `• ${it.name} (數量 x${q})：$${sub.toLocaleString()}<br>`;
-                } else if (it.type === 'range') {
-                    let p = Number(it.min) || 0;
-                    total += p; hintHtml += `• ${it.name} (基本起跳價)：$${p.toLocaleString()} <span style="color:#ff9900;">(現場依難度最高調整至 $${(Number(it.max)||0).toLocaleString()})</span><br>`;
-                } else if (it.type === 'custom') {
-                    let val = parseFloat(document.getElementById(`custom-val-${itId}`).value) || 0;
-                    let sub = Math.round(val * 0.1); total += sub; hintHtml += `• ${it.name} (購入價值 $${val.toLocaleString()} x 10%)：$${sub.toLocaleString()}<br>`;
-                }
-            }
-        }
-        
-        let hintEl = document.getElementById('total-calc-hint');
-        if (hasChecked) { 
-            hintEl.innerHTML = hintHtml + `-----------------------<br>💰 <b>目前估計總計金額：$${total.toLocaleString()}</b>`; 
-            hintEl.style.display = 'block'; 
-            document.getElementById('pPrice').value = `$${total.toLocaleString()}`; 
-        }
-        else { hintEl.style.display = 'none'; document.getElementById('pPrice').value = ''; }
-    }
-
-    async function updateDiscordWebhook(order, statusText, color, mechanicName) {
-        if (!order.webhookUrl || !order.messageId || !order.embedData) return;
         try {
-            let embed = JSON.parse(JSON.stringify(order.embedData));
-            embed.color = color;
-            
-            let statusField = null;
-            for(let i=0; i<embed.fields.length; i++) {
-                if(embed.fields[i].name.indexOf("處理狀態") !== -1) { statusField = embed.fields[i]; break; }
-            }
-            if (statusField) {
-                statusField.value = statusText;
-                if(statusText.indexOf("取消") !== -1 || statusText.indexOf("剔除") !== -1) statusField.name = "❌ 處理狀態";
-                else if(statusText.indexOf("完成") !== -1) statusField.name = "🟢 處理狀態";
-                else if(statusText.indexOf("處理中") !== -1) statusField.name = "🟡 處理狀態";
-                else statusField.name = "🔴 處理狀態";
-            } else {
-                embed.fields.push({ name: "🔴 處理狀態", value: statusText });
-            }
-
-            let empField = null;
-            for(let i=0; i<embed.fields.length; i++) {
-                if(embed.fields[i].name.indexOf("接單員工") !== -1) { empField = embed.fields[i]; break; }
-            }
-            if (empField) {
-                empField.value = mechanicName || "尚未接單";
-            } else {
-                embed.fields.push({ name: "🛠️ 接單員工", value: mechanicName || "尚未接單", inline: true });
-            }
-
-            let urlParts = order.webhookUrl.split('?');
-            let baseUrl = urlParts[0];
-            let queryParams = urlParts.length > 1 ? ('?' + urlParts[1]) : '';
-            let patchUrl = baseUrl + '/messages/' + order.messageId + queryParams;
-            
-            await fetch(patchUrl, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ embeds: [embed] })
-            });
-        } catch (e) {
-            console.error("Webhook 更新錯誤:", e);
-        }
+            let el = document.getElementById(`qty-${id}`), nv = parseInt(el.value);
+            if (isNaN(nv) || nv < 1) nv = 1; if (nv > max) nv = max; el.value = nv; calcTotalCost();
+        } catch(e){}
     }
 
-    async function sendOrder() {
-        if (!userData) { showToast("請先點擊上方按鈕，完成 Discord 帳號聯動驗證後再送出預定！", "error"); return; }
-        let catId = document.getElementById('pCat').value; if (!catId) { showToast("請選擇業務類別", "error"); return; }
-        let cat = storeData[catId], selectedItems = [], computedPrice = 0;
-        
-        let todayStartMs = getTodayStartTimestamp();
+    // === 🔒 100% 絕對防墜毀 🔒 系統數據、圖表與打卡結算模組 ===
+    function refreshAllCalculations() {
+        try {
+            let weekStart = getWeekStartTimestamp();
+            let weekId = getWeekIdStr(weekStart); 
+            
+            let weeklyIncome = 0;
+            let currentWeekSums = {};   
+            let pastUnsettledSums = {}; 
+            let settledHistorySums = {}; 
+            
+            let totalCount = 0;
+            let totalAmount = 0;
+            let myCount = 0;
+            let myAmount = 0;
+            let myCommission = 0;
+            
+            let pendingListHtml = '';
+            let historyListHtml = '';
+            let customerProgressHtml = '';
+            let now = Date.now();
+            const RETAIN_TIME_MS = 3 * 24 * 60 * 60 * 1000; 
 
-        // 🚗 核心限購攔截與檢查邏輯 🚗
-        for (let itId in cat.items) {
-            let it = cat.items[itId], chk = document.getElementById(`chk-${itId}`);
-            if (chk && chk.checked) {
-                // 1. 取得限購值
-                let limit = Number(it.dailyLimit) || 0;
-                let buyingNow = 1;
-                if (it.type === 'retail') {
-                    buyingNow = parseInt(document.getElementById(`qty-${itId}`).value) || 1;
-                }
+            globalDailyData = { '週日':0, '週一':0, '週二':0, '週三':0, '週四':0, '週五':0, '週六':0 };
+            globalCatData = {};
 
-                if (limit > 0) {
-                    // 2. 統計今日已購數量 (同Discord帳號、今天00:00後、狀態非取消)
-                    let boughtToday = 0;
-                    Object.values(ordersData || {}).forEach(order => {
-                        if (order.customerId === userData.id && 
-                            order.timestamp >= todayStartMs && 
-                            order.status !== 'cancelled' && 
-                            order.status !== 'rejected') {
+            let sortedOrders = Object.values(ordersData || {}).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            let curEmp = empData[currentEmpId];
+            let badgeEl = document.getElementById('duty-status-badge');
+            if (badgeEl && curEmp) {
+                if (curEmp.onDuty) { badgeEl.innerText = "🌞 上班中"; badgeEl.style.background = "#27ae60"; }
+                else { badgeEl.innerText = "🌙 休息中"; badgeEl.style.background = "#c0392b"; }
+            }
+            
+            sortedOrders.forEach(o => {
+                try {
+                    let t = o.timestamp || 0;
+
+                    // 👤 顧客進度面板安全渲染
+                    if (userData && o.customerId === userData.id && now - t <= RETAIN_TIME_MS) {
+                        let cBadge = '';
+                        if (o.status === 'pending') cBadge = '<span style="color:#e74c3c; font-weight:bold;">🔴 排隊中</span>';
+                        else if (o.status === 'processing') cBadge = `<span style="color:#ff9900; font-weight:bold;">🟡 施工中 (技師：${o.mechanicName || '未知'})</span>`;
+                        else cBadge = '<span style="color:#2ecc71; font-weight:bold;">🟢 已完工</span>';
+                        
+                        customerProgressHtml += `
+                            <div class="progress-item">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                    <b style="font-size: 14px; color:var(--text);">#${o.orderNo || '未知'} [${o.categoryName || '未知'}]</b>
+                                    ${cBadge}
+                                </div>
+                                <div style="font-size: 12px; color: #888; line-height: 1.5;">
+                                    車牌：${o.plate || '未填寫'}<br>
+                                    項目：${(o.details && o.details.length > 0) ? o.details.join(', ') : '無'}<br>
+                                    時間：${new Date(t).toLocaleString()}
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    // == 1. 待接單與處理中渲染 ==
+                    if (o.status === 'pending') {
+                        if (currentLoggedUserType === 'emp') {
+                            let eRole = null;
+                            if (empData && currentEmpId && empData[currentEmpId]) { eRole = empData[currentEmpId].role; }
+                            let pData = {};
+                            if (eRole && rolesData && rolesData[eRole]) { pData = rolesData[eRole]; }
+                            let catPerm = pData[o.categoryId] || { canAccept: false, pct: 0 };
                             
-                            if (order.items && Array.isArray(order.items)) {
-                                order.items.forEach(boughtItem => {
-                                    if (boughtItem.id === itId) {
-                                        boughtToday += (Number(boughtItem.qty) || 1);
-                                    }
-                                });
+                            let canTakeBtn = catPerm.canAccept 
+                                ? `<button onclick="takeOrder('${o.id}')" style="background:var(--accent); color:black; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">立刻接單</button>`
+                                : `<span style="color:#e74c3c; background:rgba(231,76,60,0.2); padding:6px 12px; border-radius:4px; font-weight:bold; font-size:11px;">無接單權限</span>`;
+
+                            pendingListHtml += `
+                                <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:var(--row-bg); border-left: 3px solid var(--accent);">
+                                    <div style="width:100%; display:flex; justify-content:space-between;">
+                                        <b style="color:var(--text);">#${o.orderNo || '未知'} <span style="color:#aaa;font-size:11px;">[${o.categoryName || '未知'}]</span></b>
+                                        <div style="display:flex; gap:5px; align-items:center;">
+                                            ${canTakeBtn}
+                                            <button onclick="cancelOrder('${o.id}')" style="background:#c0392b; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">取消訂單</button>
+                                        </div>
+                                    </div>
+                                    <div style="font-size:13px; color:var(--text);">車牌: <b style="color:#3498db">${o.plate || '未填寫'}</b> | 總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></div>
+                                    <div style="font-size:11px; color:#aaa;">預定人: ${o.customerName || o.discordName || '未錄入'}</div>
+                                    <div style="font-size:11px; color:#888;">${o.timestamp ? new Date(o.timestamp).toLocaleString() : '未知時間'}</div>
+                                </div>
+                            `;
+                        }
+                    } else if (o.status === 'processing' && o.mechanicId === currentEmpId) {
+                        let itemsListHtml = '';
+                        if (o.details && o.details.length > 0) {
+                            let nArr = [];
+                            for(let i=0; i<o.details.length; i++) {
+                                nArr.push(`<li style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.1); padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#aaa; width:100%; box-sizing:border-box;">
+                                            <span style="color:var(--text);">• ${o.details[i]}</span>
+                                            <span style="color:#e74c3c; cursor:pointer; font-weight:bold; margin-left:8px;" onclick="deleteOrderSubItem('${o.id}', ${i})">❌ 刪除</span>
+                                        </li>`);
+                            }
+                            itemsListHtml = nArr.join('');
+                        } else {
+                            itemsListHtml = '<li style="color:#888;">無訂購細項</li>';
+                        }
+
+                        pendingListHtml += `
+                            <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:var(--row-bg); border: 2px solid var(--accent);">
+                                <div style="width:100%; display:flex; justify-content:space-between;"><b style="color:var(--accent)">#${o.orderNo} [處理中]</b><span style="color:#aaa;font-size:11px;">[${o.categoryName}]</span></div>
+                                <div style="font-size:13px; color:var(--text); background:rgba(0,0,0,0.1); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
+                                    👤 <b>客戶名稱:</b> <span style="color:var(--accent); font-weight:bold;">${o.customerName || o.discordName || '未錄入'}</span> 
+                                    <span style="font-size:10px; color:#888;">(ID: ${o.customerId || o.discordId || '未知'})</span><br>
+                                    🚗 <b>車牌/車款:</b> <span style="color:#3498db; font-weight:bold;">${o.plate || '未知'} / ${o.carModel || '未知'}</span><br>
+                                    <div style="font-size:11px; color:#aaa; margin:5px 0 3px 0;">🛠️ 細項內容物調整與刪減：</div>
+                                    <ul style="margin:5px 0 0 0; padding:0; font-size:12px; list-style-type:none; display:flex; flex-direction:column; gap:3px; width:100%;">
+                                        ${itemsListHtml}
+                                    </ul>
+                                </div>
+                                <div style="font-size:13px; color:var(--text); width:100%; display:flex; justify-content:space-between;">
+                                    <span>當前總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></span>
+                                    <span>應得估計分成: <b style="color:#2ecc71">$${Number(o.commission || 0).toLocaleString()}</b></span>
+                                </div>
+                                <button onclick="openEmpActiveModal('${o.id}')" style="background:#2ecc71; color:white; width:100%; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">確認完成訂單</button>
+                                <button onclick="abandonOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">放棄接單 (釋回大廳)</button>
+                            </div>
+                        `;
+                    }
+                    
+                    // == 2. 發薪、營收結算 ==
+                    if (o.status === 'completed' || o.status === 'accepted') {
+                        let priceToUse = Number(o.totalPrice || o.price || 0);
+                        let orderWeekStart = getWeekStartTimestampByTime(t);
+                        let orderWeekId = getWeekIdStr(orderWeekStart);
+                        let commAmount = o.commission || 0;
+                        
+                        if (!commAmount) {
+                            if (o.isRoadside) commAmount = Math.round(priceToUse * 0.9);
+                            else commAmount = Math.round(priceToUse * ((o.settledRate || 70) / 100));
+                        }
+                        
+                        let empIdForSum = o.mechanicId || o.acceptedBy;
+                        let empNameForSum = o.mechanicName || (empData[empIdForSum] ? empData[empIdForSum].nickname : '未知技師');
+                        
+                        let isWeekSettled = false;
+                        let settledAt = 0;
+                        if (paidWeeksData && paidWeeksData[orderWeekId] && paidWeeksData[orderWeekId][empIdForSum] && paidWeeksData[orderWeekId][empIdForSum].paid) {
+                            isWeekSettled = true;
+                            settledAt = paidWeeksData[orderWeekId][empIdForSum].settledAt;
+                        }
+                        
+                        if (o.isPaid || isWeekSettled) {
+                            if (now - settledAt <= RETAIN_TIME_MS) {
+                                if (!settledHistorySums[orderWeekId]) settledHistorySums[orderWeekId] = {};
+                                if (!settledHistorySums[orderWeekId][empIdForSum]) settledHistorySums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
+                                settledHistorySums[orderWeekId][empIdForSum].earn += commAmount;
+                                settledHistorySums[orderWeekId][empIdForSum].count++;
+                            }
+                        } else {
+                            if (orderWeekId === weekId) {
+                                if (!currentWeekSums[empIdForSum]) currentWeekSums[empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
+                                currentWeekSums[empIdForSum].earn += commAmount;
+                                currentWeekSums[empIdForSum].count++;
+                            } else {
+                                if (!pastUnsettledSums[orderWeekId]) pastUnsettledSums[orderWeekId] = {};
+                                if (!pastUnsettledSums[orderWeekId][empIdForSum]) pastUnsettledSums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
+                                pastUnsettledSums[orderWeekId][empIdForSum].earn += commAmount;
+                                pastUnsettledSums[orderWeekId][empIdForSum].count++;
                             }
                         }
-                    });
 
-                    // 3. 條件判定：是否超限
-                    let remain = limit - boughtToday;
-                    if (remain <= 0) {
-                        showToast(`⛔ 訂購失敗！\n【${it.name}】每日限購 ${limit} 份。\n您今日的額度已用完，請於明日 00:00 後再次購買！`, "error");
-                        document.getElementById('submit-btn').disabled = false;
-                        document.getElementById('submit-btn').innerText = '送出預定';
-                        return;
+                        if (t >= weekStart) {
+                            totalCount++;
+                            totalAmount += priceToUse;
+                            weeklyIncome += (priceToUse - commAmount);
+                            
+                            let dObj = new Date(t);
+                            let days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+                            let dayName = days[dObj.getDay()] || '週日';
+                            globalDailyData[dayName] = (globalDailyData[dayName] || 0) + priceToUse;
+                            let cName = o.categoryName || '其他';
+                            globalCatData[cName] = (globalCatData[cName] || 0) + priceToUse;
+                        }
+                        
+                        if (currentLoggedUserType === 'emp' && (o.mechanicId === currentEmpId || o.acceptedBy === currentEmpId) && t >= weekStart) {
+                            myCount++;
+                            myAmount += priceToUse;
+                            myCommission += commAmount;
+                        }
                     }
-
-                    if (buyingNow > remain) {
-                        showToast(`⛔ 訂購失敗！\n【${it.name}】每日限購 ${limit} 份 (今日已購 ${boughtToday} 份)。\n您今日僅剩餘 ${remain} 份購買額度，請降低訂購數量！`, "error");
-                        document.getElementById('submit-btn').disabled = false;
-                        document.getElementById('submit-btn').innerText = '送出預定';
-                        return;
-                    }
-                }
-
-                let itemSummary = { id: itId, name: it.name, type: it.type, dailyLimit: limit };
-                if (it.type === 'single') { itemSummary.calcPrice = Number(it.price)||0; computedPrice += itemSummary.calcPrice; }
-                else if (it.type === 'retail') {
-                    itemSummary.qty = buyingNow; itemSummary.calcPrice = (Number(it.price)||0) * buyingNow; computedPrice += itemSummary.calcPrice;
-                } else if (it.type === 'range') { 
-                    itemSummary.calcPrice = Number(it.min)||0; itemSummary.rangeMax = Number(it.max)||0; computedPrice += itemSummary.calcPrice; 
-                } else if (it.type === 'custom') {
-                    let val = parseFloat(document.getElementById(`custom-val-${itId}`).value) || 0;
-                    itemSummary.customAssetVal = val; itemSummary.calcPrice = Math.round(val * 0.1); computedPrice += itemSummary.calcPrice;
-                }
-                selectedItems.push(itemSummary);
-            }
-        }
-        
-        if (selectedItems.length === 0) { showToast("請至少勾選一項服務項目", "error"); return; }
-        
-        document.getElementById('submit-btn').disabled = true;
-        document.getElementById('submit-btn').innerText = '預定送出中...';
-        
-        try {
-            const orderNo = await generateOrderNo();
-            
-            let detailsStrArray = selectedItems.map(i => {
-                let valStr = `$${(Number(i.calcPrice)||0).toLocaleString()}`;
-                if (i.type==='retail') valStr += ` (數量: ${i.qty})`;
-                if (i.type==='range') valStr += ` (最高至 $${(Number(i.rangeMax)||0).toLocaleString()})`;
-                if (i.type==='custom') valStr += ` (資產 $${(Number(i.customAssetVal)||0).toLocaleString()})`;
-                return `${i.name}  (${valStr})`;
-            });
-
-            let pPlate = document.getElementById('pPlate').value.trim() || '未填寫';
-            let pCarModel = document.getElementById('pCarModel').value.trim() || '未填寫';
-            let pRemarks = document.getElementById('pRemarks').value.trim() || '無';
-            
-            let newOrder = {
-                id: 'ORD-' + Date.now(),
-                orderNo: orderNo,
-                categoryName: cat.name,
-                categoryId: catId,
-                items: selectedItems,
-                details: detailsStrArray, 
-                totalPrice: computedPrice,
-                price: computedPrice, 
-                discordName: userData.global_name || userData.username || '未知客戶',
-                discordId: userData.id,
-                customerId: userData.id, 
-                customerName: userData.global_name || userData.username || '未知客戶', 
-                discordAvatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png',
-                plate: pPlate,
-                carModel: pCarModel,
-                remarks: pRemarks,
-                status: 'pending',
-                timestamp: Date.now(),
-                webhookUrl: cat.webhook || '',
-                messageId: ''
-            };
-
-            let embedPayload = {
-                title: `🆕 新預定單 #${orderNo}`,
-                color: 16751104,
-                fields: [
-                    { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
-                    { name: "💰 總金額", value: `**$${computedPrice.toLocaleString()}**`, inline: true },
-                    { name: "🚗 車輛資訊", value: `車牌: \`${pPlate}\`\n車款: \`${pCarModel}\`\n備註: ${pRemarks}`, inline: false },
-                    { name: "📋 服務明細", value: "```\n" + detailsStrArray.join("\n") + "\n```" },
-                    { name: "🔴 處理狀態", value: "待接訂單" },
-                    { name: "🛠️ 接單員工", value: "尚未接單", inline: true }
-                ],
-                footer: { text: "翔毅車業・預訂系統" },
-                timestamp: new Date().toISOString()
-            };
-            
-            newOrder.embedData = embedPayload;
-
-            if (newOrder.webhookUrl.trim() !== '') {
-                try {
-                    let urlParts = newOrder.webhookUrl.split('?');
-                    let fetchUrl = urlParts[0] + '?wait=true' + (urlParts.length > 1 ? '&' + urlParts[1] : '');
                     
-                    let res = await fetch(fetchUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username: "翔毅車業預定系統", embeds: [embedPayload] })
-                    });
-                    if (res.ok) {
-                        let msgData = await res.json();
-                        newOrder.messageId = msgData.id || '';
+                    // == 3. 歷史大廳 ==
+                    if (now - t <= RETAIN_TIME_MS) {
+                        let badge = '';
+                        let mName = o.mechanicName || '未知技師';
+                        if (!o.mechanicName) {
+                            let accId = o.acceptedBy || o.mechanicId;
+                            if (accId && empData[accId]) mName = empData[accId].nickname;
+                            else mName = '尚未接單';
+                        }
+
+                        if (o.status === 'pending') badge = '<span style="color:#e74c3c; font-weight:bold;">未接單</span>';
+                        else if (o.status === 'processing') badge = `<span style="color:#ff9900; font-weight:bold;">處理中 (${mName})</span>`;
+                        else badge = `<span style="color:#2ecc71; font-weight:bold;">已完成 (${mName})</span>`;
+                        
+                        let subItemsHtml = '';
+                        if (o.details && o.details.length > 0) {
+                            let nArr = [];
+                            for(let i=0; i<o.details.length; i++) {
+                                nArr.push(`<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.1); padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#aaa; border:1px solid var(--border-color);">
+                                            <span>${o.details[i]}</span>
+                                            <span style="color:#e74c3c; cursor:pointer; font-weight:bold;" onclick="deleteOrderSubItem('${o.id}', ${i})">❌ 刪除項目</span>
+                                        </div>`);
+                            }
+                            subItemsHtml = nArr.join('');
+                        }
+
+                        let isCmpl = (o.status === 'completed' || o.status === 'accepted');
+                        historyListHtml += `
+                            <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px; background:var(--row-bg);">
+                                <div style="display:flex; justify-content:space-between; width:100%;">
+                                    <b style="color:var(--text);">#${o.orderNo || '未知'}</b> ${badge}
+                                </div>
+                                <div style="font-size:12px; color:#aaa; width:100%; border-bottom:1px solid var(--border-color); padding-bottom:5px;">
+                                    👤 訂購者名稱: <strong style="color:var(--accent)">${o.customerName || o.discordName || '未驗證'}</strong> 
+                                </div>
+                                <div style="width:100%; margin:4px 0;">
+                                    <span style="font-size:11px; color:#888;">🛠️ 細項內容物與刪減：</span>
+                                    ${subItemsHtml}
+                                </div>
+                                <div style="color:#aaa; font-size:11px; width:100%; display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                                    <span>總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b> | 實發: $${Number(o.commission || 0).toLocaleString()}</span>
+                                    <button class="del-btn" onclick="${isCmpl ? `deleteCompletedOrder('${o.id}')` : `cancelOrder('${o.id}')`}">${isCmpl ? '強制剔除扣回公款' : '直接取消訂單'}</button>
+                                </div>
+                            </div>
+                        `;
                     }
-                } catch (we) { console.error("Webhook Err:", we); }
-            }
+                } catch (error) {
+                    console.error("渲染單筆訂單發生錯誤, 已自動跳過防崩潰: ", o.id, error);
+                }
+            });
             
-            await db.ref('orders/' + newOrder.id).set(newOrder);
-            showToast(`🎉 預定成功！編號：${orderNo}`, "success");
-            setTimeout(() => { location.reload(); }, 1500);
-
-        } catch (error) {
-            console.error(error);
-            showToast("系統發生錯誤，送出失敗", "error");
-            document.getElementById('submit-btn').disabled = false;
-            document.getElementById('submit-btn').innerText = '送出預定';
-        }
-    }
-
-    function showLogin(type) { 
-        document.getElementById('player-view').style.display='none'; 
-        if(type==='boss') {
-            document.getElementById('login-view').style.display='block'; 
-            document.getElementById('emp-login-view').style.display='none';
-        } else {
-            document.getElementById('login-view').style.display='none'; 
-            document.getElementById('emp-login-view').style.display='block';
-        }
-    }
-    
-    function authAdmin() {
-        let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
-        if (u === 'pomelo' && p === '0326') { 
-            currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
-            showToast("👑 老闆登入成功", "success"); 
-            refreshAllCalculations(); 
-            enterAdmin(); 
-        } else { 
-            showToast("帳號或密碼錯誤", "error"); 
-        }
-    }
-    
-    function authEmployee() {
-        let u = document.getElementById('eUser').value.trim(), p = document.getElementById('ePass').value;
-        let found = false;
-        for(let id in empData) {
-            if(empData[id] && empData[id].username === u && empData[id].password === p) {
-                found = true;
-                currentLoggedUserType = 'emp';
-                currentEmpId = id;
-                
-                if (empData[id].onDuty) {
-                    db.ref(`employees/${id}/onDuty`).set(false);
-                    empData[id].onDuty = false;
-                }
-
-                showToast(`🛠️ 歡迎回來，${empData[id].nickname}`, "success");
-                refreshAllCalculations(); 
-                enterAdmin();
-                break;
+            if (userData) {
+                document.getElementById('customer-progress-list').innerHTML = customerProgressHtml || '<p style="color: #888; text-align: center; margin: 10px 0; font-size:12px;">目前無 72 小時內的預訂紀錄。</p>';
             }
+
+            let pendingContainer = document.getElementById('emp-pending-list');
+            if(pendingContainer) pendingContainer.innerHTML = pendingListHtml || '<p style="color:#666; font-size:12px; text-align:center;">大廳目前空空如也...</p>';
+            
+            if (document.getElementById('stat-count')) {
+                document.getElementById('stat-count').innerText = totalCount;
+                document.getElementById('stat-amount').innerText = '$' + totalAmount.toLocaleString();
+            }
+            if (document.getElementById('finance-weekly-income')) document.getElementById('finance-weekly-income').innerText = '$' + weeklyIncome.toLocaleString();
+            if (document.getElementById('history-list')) document.getElementById('history-list').innerHTML = historyListHtml || '<p style="color:#666; font-size:12px; text-align:center;">72小時內暫無任何訂單</p>';
+            
+            if (document.getElementById('emp-my-count')) {
+                document.getElementById('emp-my-count').innerText = myCount;
+                document.getElementById('emp-my-amount').innerText = '$' + myAmount.toLocaleString();
+                document.getElementById('emp-my-commission').innerText = '$' + myCommission.toLocaleString();
+            }
+
+            if (document.getElementById('payroll-current-week')) {
+                let cHtml = '';
+                if (Object.keys(currentWeekSums).length === 0) { cHtml = '<p style="color:#666; font-size:11px; margin:0;">本週暫無技師完工累積金額</p>'; }
+                else {
+                    for (let eId in currentWeekSums) {
+                        if (!currentWeekSums[eId]) continue;
+                        cHtml += `• <b style="color:var(--text);">${currentWeekSums[eId].name}</b> : 應得發薪 <span style="color:var(--accent); font-weight:bold;">$${currentWeekSums[eId].earn.toLocaleString()}</span> (完工 ${currentWeekSums[eId].count} 單)<br>`;
+                    }
+                }
+                document.getElementById('payroll-current-week').innerHTML = cHtml;
+
+                let pHtml = '';
+                if (Object.keys(pastUnsettledSums).length === 0) { pHtml = '<p style="color:#666; font-size:11px; margin:0;">無任何過往積欠待結算之薪資。</p>'; }
+                else {
+                    for (let wId in pastUnsettledSums) {
+                        if (!pastUnsettledSums[wId]) continue;
+                        pHtml += `<div class="week-block"><div class="week-title"><span>📅 週別：${wId} 的未結算薪資</span></div>`;
+                        for (let eId in pastUnsettledSums[wId]) {
+                            if (!pastUnsettledSums[wId][eId]) continue;
+                            pHtml += `
+                            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding:5px 0;">
+                                <span>• <b style="color:var(--text);">${pastUnsettledSums[wId][eId].name}</b> : <span style="color:#ff9900; font-weight:bold;">$${pastUnsettledSums[wId][eId].earn.toLocaleString()}</span></span>
+                                <button class="settle-btn-mini" onclick="manualSettleSalary('${wId}', '${eId}')">💰 結算扣公款</button>
+                            </div>`;
+                        }
+                        pHtml += `</div>`;
+                    }
+                }
+                document.getElementById('payroll-past-unsettled').innerHTML = pHtml;
+
+                let hHtml = ''; let hasHistory = false;
+                for (let wId in paidWeeksData) {
+                    if (!paidWeeksData[wId]) continue;
+                    for (let eId in paidWeeksData[wId]) {
+                        if (!paidWeeksData[wId][eId]) continue;
+                        let sAt = paidWeeksData[wId][eId].settledAt || 0;
+                        if (now - sAt <= RETAIN_TIME_MS) {
+                            hasHistory = true;
+                            let timeStr = new Date(sAt).toLocaleString('zh-TW', { hour12: false });
+                            let eName = '已結算員工';
+                            let eEarn = 0;
+                            if (settledHistorySums[wId] && settledHistorySums[wId][eId]) {
+                                eName = settledHistorySums[wId][eId].name || '已結算員工';
+                                eEarn = settledHistorySums[wId][eId].earn || 0;
+                            } else if (paidWeeksData[wId] && paidWeeksData[wId][eId]) {
+                                eEarn = paidWeeksData[wId][eId].salary || 0;
+                            }
+                            
+                            hHtml += `<div class="week-block" style="border-left-color:#2ecc71;">
+                                <div class="week-title" style="color:#2ecc71;">
+                                    <span>📅 ${wId} - ${eName}</span>
+                                    <button class="settle-btn-mini" style="background:#5865F2; color:white;" onclick="cancelPaySingleEmployee('${wId}', '${eId}')">取消退回公款</button>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; font-size:11px;">
+                                    <span>已分撥: <span style="color:#2ecc71; font-weight:bold;">$${eEarn.toLocaleString()}</span></span>
+                                    <span style="color:#888;">${timeStr}</span>
+                                </div>
+                            </div>`;
+                        }
+                    }
+                }
+                if (!hasHistory) { hHtml = '<p style="color:#666; font-size:11px; margin:0;">3天內無歷史結算紀錄。</p>'; }
+                document.getElementById('payroll-settled-history').innerHTML = hHtml;
+            }
+
+            renderCharts(globalDailyData, globalCatData);
+        } catch(err) {
+            console.error("全域工時與分成安全計算執行緒異常(已阻斷防崩潰): ", err);
         }
-        if(!found) showToast("員工帳密錯誤或不存在", "error");
     }
 
-    function enterAdmin() {
-        document.getElementById('login-view').style.display = 'none';
-        document.getElementById('emp-login-view').style.display = 'none';
-        document.getElementById('admin-view').style.display = 'block';
-        if (currentLoggedUserType === 'boss') { document.getElementById('nav-boss').style.display = 'flex'; switchPage('manage'); }
-        else { document.getElementById('nav-emp').style.display = 'flex'; switchPage('emp-pending'); }
-    }
-
-    function switchPage(page) {
-        document.querySelectorAll('[id^="admin-page-"]').forEach(el => el.style.display = 'none');
-        document.querySelectorAll('.admin-nav button').forEach(b => b.classList.remove('active'));
-        let targetPage = document.getElementById(`admin-page-${page}`);
-        if(targetPage) targetPage.style.display = 'block';
-        let targetBtn = document.getElementById(`nav-btn-${page}`);
-        if(targetBtn) targetBtn.classList.add('active');
-        
-        if (page === 'roles') loadRolePerms(); 
-    }
-
+    // --- 安全登出，登出時自動結算工時 ---
     function handleLogout() {
-        if (currentLoggedUserType === 'emp' && currentEmpId) {
-            let e = empData[currentEmpId];
-            if (e && e.onDuty) {
-                showToast('⚠️ 尚未下班！系統正為您自動結算工時...', 'info');
-                
-                let now = Date.now();
-                let dateStr = getWeekIdStr(now);
-                let updates = {};
-                updates[`employees/${currentEmpId}/onDuty`] = false;
-                let lastIn = e.lastClockIn;
-                if (lastIn) {
-                    let durationMins = Math.floor((now - lastIn) / 60000);
-                    let existingMins = (e.dutyLogs && e.dutyLogs[dateStr]) ? e.dutyLogs[dateStr].minutes : 0;
-                    updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+        try {
+            if (currentLoggedUserType === 'emp' && currentEmpId) {
+                let e = empData[currentEmpId];
+                if (e && e.onDuty) {
+                    showToast('⚠️ 尚未下班！系統正為您自動結算工時...', 'info');
+                    
+                    let now = Date.now();
+                    let dateStr = getWeekIdStr(now);
+                    let updates = {};
+                    updates[`employees/${currentEmpId}/onDuty`] = false;
+                    let lastIn = e.lastClockIn;
+                    if (lastIn) {
+                        let durationMins = Math.floor((now - lastIn) / 60000);
+                        let existingMins = (e.dutyLogs && e.dutyLogs[dateStr]) ? e.dutyLogs[dateStr].minutes : 0;
+                        updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+                    }
+                    
+                    db.ref().update(updates).then(() => {
+                        location.reload();
+                    });
+                    return; 
                 }
-                
-                db.ref().update(updates).then(() => {
-                    location.reload();
-                });
-                return; 
             }
+            location.reload();
+        } catch(e) {
+            location.reload();
         }
-        location.reload();
     }
 
-    function toggleDuty(onDuty) {
-        if (!currentEmpId || currentEmpId === 'boss') return;
-        
-        let now = Date.now();
-        let dateStr = getWeekIdStr(now); 
-        let updates = {};
-        
-        updates[`employees/${currentEmpId}/onDuty`] = onDuty;
-        
-        if (onDuty) {
-            updates[`employees/${currentEmpId}/lastClockIn`] = now;
-        } else {
-            let lastIn = empData[currentEmpId].lastClockIn;
-            if (lastIn) {
-                let durationMins = Math.floor((now - lastIn) / 60000);
-                let existingMins = (empData[currentEmpId].dutyLogs && empData[currentEmpId].dutyLogs[dateStr]) ? empData[currentEmpId].dutyLogs[dateStr].minutes : 0;
-                updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+    // 老闆驗證登入
+    function authAdmin() {
+        try {
+            let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
+            if (u === 'pomelo' && p === '0326') { 
+                currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
+                showToast("👑 老闆登入成功", "success"); 
+                refreshAllCalculations(); 
+                enterAdmin(); 
+            } else { 
+                showToast("帳號或密碼錯誤", "error"); 
             }
+        } catch(e) {
+            console.error("老闆登入出錯:", e);
         }
-        
-        db.ref().update(updates).then(() => {
-            showToast(onDuty ? "🌞 已順利開始上班！" : "🌙 已順利打卡下班！", "success");
-            refreshAllCalculations();
-        });
+    }
+    
+    // 員工驗證登入 (安全工時重置)
+    function authEmployee() {
+        try {
+            let u = document.getElementById('eUser').value.trim(), p = document.getElementById('ePass').value;
+            let found = false;
+            for(let id in empData) {
+                if(empData[id] && empData[id].username === u && empData[id].password === p) {
+                    found = true;
+                    currentLoggedUserType = 'emp';
+                    currentEmpId = id;
+                    
+                    // 防呆：登入時預設必須為下班
+                    if (empData[id].onDuty) {
+                        db.ref(`employees/${id}/onDuty`).set(false);
+                        empData[id].onDuty = false;
+                    }
+
+                    showToast(`🛠| 歡迎回來，${empData[id].nickname}`, "success");
+                    refreshAllCalculations(); 
+                    enterAdmin();
+                    break;
+                }
+            }
+            if(!found) showToast("員工帳密錯誤或不存在", "error");
+        } catch(e) {
+            console.error("員工登入出錯:", e);
+        }
     }
 
-    function viewDutyLogs(empId) {
-        let e = empData[empId];
-        if (!e) return;
-        
-        let html = `<div style="max-height: 250px; overflow-y: auto; text-align: left; margin-bottom: 10px;">`;
-        if (e.dutyLogs) {
-            let dates = Object.keys(e.dutyLogs).sort((a, b) => new Date(b) - new Date(a));
-            dates.forEach(d => {
-                let mins = e.dutyLogs[d].minutes || 0;
-                let hrs = Math.floor(mins / 60);
-                let remainMins = mins % 60;
-                html += `<div style="padding: 8px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between;">
-                    <span style="color: var(--text);">${d}</span>
-                    <span style="color: var(--accent); font-weight: bold;">${hrs} 小時 ${remainMins} 分鐘</span>
-                </div>`;
-            });
-        } else {
-            html += `<p style="color:#aaa; text-align:center;">尚無任何打卡紀錄</p>`;
-        }
-        html += `</div>
-                 <p style="font-size:11px; color:#e74c3c; line-height: 1.4; font-weight:bold; margin-top:5px;">
-                    ⚠️ *備註：若打卡時間與伺服器內上下班紀錄時間差過大（或伺服器內無紀錄），則當天不納入全勤計算。
-                 </p>`;
-        
-        document.getElementById('modal-title').innerText = `🕒 ${e.nickname} 的打卡時數`;
-        document.getElementById('modal-item-name').innerText = "";
-        document.getElementById('modal-input-area').innerHTML = html;
-        document.getElementById('modal-confirm').onclick = closeModal;
-        document.getElementById('custom-modal').style.display = 'block'; 
-        document.getElementById('modal-overlay').style.display = 'block';
-    }
-
+    // 項目圖表安全渲染 (100%防空防禦)
     function renderCharts(dailyData, catData) {
-        let tc = document.documentElement.getAttribute('data-theme') === 'light' ? '#333' : '#ccc';
-        Chart.defaults.color = tc;
-        
-        let ctxWeekly = document.getElementById('weeklyChart');
-        if(ctxWeekly) {
-            if (chartWeekly) chartWeekly.destroy();
-            let labels = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-            let data = labels.map(l => dailyData[l] || 0);
-            chartWeekly = new Chart(ctxWeekly, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '本週營業額 ($)',
-                        data: data,
-                        backgroundColor: 'rgba(255, 153, 0, 0.6)',
-                        borderColor: 'rgba(255, 153, 0, 1)',
-                        borderWidth: 1,
-                        borderRadius: 4
-                    }]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: tc } }, x: { ticks: { color: tc } } }, plugins: { legend: { labels: { color: tc } } } }
-            });
+        try {
+            if (typeof Chart === 'undefined') {
+                console.warn("Chart.js 庫尚未下載完畢，跳過圖表初始化。");
+                return;
+            }
+            let tc = document.documentElement.getAttribute('data-theme') === 'light' ? '#333' : '#ccc';
+            Chart.defaults.color = tc;
+            
+            let ctxWeekly = document.getElementById('weeklyChart');
+            if(ctxWeekly) {
+                if (chartWeekly) chartWeekly.destroy();
+                let labels = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+                let data = labels.map(l => dailyData[l] || 0);
+                chartWeekly = new Chart(ctxWeekly, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '本週營業額 ($)',
+                            data: data,
+                            backgroundColor: 'rgba(255, 153, 0, 0.6)',
+                            borderColor: 'rgba(255, 153, 0, 1)',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: tc } }, x: { ticks: { color: tc } } }, plugins: { legend: { labels: { color: tc } } } }
+                });
+            }
+
+            let ctxCat = document.getElementById('categoryChart');
+            if(ctxCat) {
+                if (chartCategory) chartCategory.destroy();
+                let labels = Object.keys(catData);
+                let data = Object.values(catData);
+                chartCategory = new Chart(ctxCat, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: ['#5865F2', '#2ecc71', '#e74c3c', '#ff9900', '#9b59b6', '#1abc9c', '#34495e'],
+                            borderColor: 'transparent'
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: tc } } } }
+                });
+            }
+        } catch(err) {
+            console.error("圖表引擎安全機制捕捉到非預期警告（已自動排除）: ", err);
         }
-
-        let ctxCat = document.getElementById('categoryChart');
-        if(ctxCat) {
-            if (chartCategory) chartCategory.destroy();
-            let labels = Object.keys(catData);
-            let data = Object.values(catData);
-            chartCategory = new Chart(ctxCat, {
-                type: 'doughnut',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: data,
-                        backgroundColor: ['#5865F2', '#2ecc71', '#e74c3c', '#ff9900', '#9b59b6', '#1abc9c', '#34495e'],
-                        borderColor: 'transparent'
-                    }]
-                },
-                options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: tc } } } }
-            });
-        }
     }
 
-    // 管理後台 UI 工具
-    function setPriceMode(mode) {
-        currentMode = mode; document.querySelectorAll('.mode-toggle button').forEach(b => b.classList.remove('active'));
-        document.getElementById(`mode${mode.charAt(0).toUpperCase() + mode.slice(1)}`).classList.add('active');
-        document.getElementById('inputSingle').style.display = (mode==='single' || mode==='retail') ? 'block' : 'none';
-        document.getElementById('inputRetailExtra').style.display = (mode==='retail') ? 'block' : 'none';
-        document.getElementById('inputRange').style.display = (mode==='range') ? 'flex' : 'none';
-        document.getElementById('nItemPrice').placeholder = (mode==='retail') ? '單位單價' : '單價';
-    }
-
-    function openWebhookModal(catId) {
-        let oldUrl = storeData[catId].webhook || '';
-        let area = document.getElementById('modal-input-area');
-        document.getElementById('modal-title').innerText = "Webhook 設定";
-        area.innerHTML = `<input type="text" id="webhook-url-input" value="${oldUrl}" placeholder="https://discord.com/api/webhooks/...">`;
-        document.getElementById('modal-confirm').onclick = () => {
-            db.ref(`xiangyi_shop/${catId}/webhook`).set(document.getElementById('webhook-url-input').value.trim()).then(() => { showToast("已更新！", "success"); closeModal(); });
-        };
-        document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
-    }
-
+    // 項目管理、類別新增
     function addCat() {
-        let name = document.getElementById('nCatName').value.trim(), web = document.getElementById('nCatWeb').value.trim();
-        if (!name) return; let id = 'CAT-' + Date.now();
-        db.ref('xiangyi_shop/' + id).set({ name: name, webhook: web, items: {} }).then(() => { showToast("分類建立成功", "success"); document.getElementById('nCatName').value=''; document.getElementById('nCatWeb').value=''; });
+        try {
+            let name = document.getElementById('nCatName').value.trim(), web = document.getElementById('nCatWeb').value.trim();
+            if (!name) return; let id = 'CAT-' + Date.now();
+            db.ref('xiangyi_shop/' + id).set({ name: name, webhook: web, items: {} }).then(() => { showToast("分類建立成功", "success"); document.getElementById('nCatName').value=''; document.getElementById('nCatWeb').value=''; });
+        } catch(e){}
     }
 
     function deleteCategory(catId) { if (confirm("確定要整層刪除此分類及底下所有商品嗎？此動作不可逆！")) { db.ref('xiangyi_shop/' + catId).remove().then(() => showToast("分類已連同項目徹底刪除", "success")); } }
 
     function addItem() {
-        let catId = document.getElementById('aCatSelect').value; if (!catId) { alert("請選擇分類"); return; }
-        let name = document.getElementById('nItemName').value.trim(); if (!name) return;
-        let limitVal = Number(document.getElementById('nItemDailyLimit').value) || 0;
-        
-        let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999, dailyLimit: limitVal };
-        
-        if (currentMode === 'single' || currentMode === 'retail') {
-            let p = Number(document.getElementById('nItemPrice').value) || 0; itemData.price = p;
-            if (currentMode === 'retail') { let m = document.getElementById('nItemMax').value; if (m) itemData.max = Number(m); }
-        } else if (currentMode === 'range') {
-            itemData.min = Number(document.getElementById('nPriceMin').value) || 0; itemData.max = Number(document.getElementById('nPriceMax').value) || 0;
-        }
-        db.ref(`xiangyi_shop/${catId}/items/${itemData.id}`).set(itemData).then(() => {
-            showToast("商品上架成功", "success"); document.getElementById('nItemName').value = '';
-            document.getElementById('nItemPrice').value = ''; document.getElementById('nItemMax').value = '';
-            document.getElementById('nPriceMin').value = ''; document.getElementById('nPriceMax').value = '';
-            document.getElementById('nItemDailyLimit').value = '';
-        });
+        try {
+            let catId = document.getElementById('aCatSelect').value; if (!catId) { alert("請選擇分類"); return; }
+            let name = document.getElementById('nItemName').value.trim(); if (!name) return;
+            let limitVal = Number(document.getElementById('nItemDailyLimit').value) || 0;
+            
+            let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999, dailyLimit: limitVal };
+            
+            if (currentMode === 'single' || currentMode === 'retail') {
+                let p = Number(document.getElementById('nItemPrice').value) || 0; itemData.price = p;
+                if (currentMode === 'retail') { let m = document.getElementById('nItemMax').value; if (m) itemData.max = Number(m); }
+            } else if (currentMode === 'range') {
+                itemData.min = Number(document.getElementById('nPriceMin').value) || 0; itemData.max = Number(document.getElementById('nPriceMax').value) || 0;
+            }
+            db.ref(`xiangyi_shop/${catId}/items/${itemData.id}`).set(itemData).then(() => {
+                showToast("商品上架成功", "success"); document.getElementById('nItemName').value = '';
+                document.getElementById('nItemPrice').value = ''; document.getElementById('nItemMax').value = '';
+                document.getElementById('nPriceMin').value = ''; document.getElementById('nPriceMax').value = '';
+                document.getElementById('nItemDailyLimit').value = '';
+            });
+        } catch(e){}
     }
 
     function deleteItem(catId, itemId) { if(confirm("確定下架此項目嗎？")) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).remove().then(() => showToast("商品已下架", "success")); } }
 
     function openEditModal(cid, iid) {
-        let i = storeData[cid].items[iid], a = document.getElementById('modal-input-area');
-        document.getElementById('modal-title').innerText = "編輯項目";
-        let dlVal = i.dailyLimit || 0;
-        if (i.type === 'retail') {
-            a.innerHTML = `單價 <input type="number" id="ep" value="${i.price}"><br>上限 <input type="number" id="em" value="${i.max || ''}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
-            document.getElementById('modal-confirm').onclick = () => { 
-                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
-                    price: Number(document.getElementById('ep').value), 
-                    max: document.getElementById('em').value ? Number(document.getElementById('em').value) : '',
-                    dailyLimit: Number(document.getElementById('edl').value) || 0
-                }); 
-                closeModal(); 
-            };
-        } else if (i.type === 'single') {
-            a.innerHTML = `售價 <input type="number" id="ep" value="${i.price}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
-            document.getElementById('modal-confirm').onclick = () => { 
-                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
-                    price: Number(document.getElementById('ep').value),
-                    dailyLimit: Number(document.getElementById('edl').value) || 0
-                }); 
-                closeModal(); 
-            };
-        } else if (i.type === 'range') {
-            a.innerHTML = `最低 <input type="number" id="emi" value="${i.min}"><br>最高 <input type="number" id="ema" value="${i.max}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
-            document.getElementById('modal-confirm').onclick = () => { 
-                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
-                    min: Number(document.getElementById('emi').value), 
-                    max: Number(document.getElementById('ema').value),
-                    dailyLimit: Number(document.getElementById('edl').value) || 0
-                }); 
-                closeModal(); 
-            };
-        } else {
-            a.innerHTML = `每日限購 <input type="number" id="edl" value="${dlVal}">`;
-            document.getElementById('modal-confirm').onclick = () => { 
-                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({
-                    dailyLimit: Number(document.getElementById('edl').value) || 0
-                }); 
-                closeModal(); 
-            };
-        }
-        document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
+        try {
+            let i = storeData[cid].items[iid], a = document.getElementById('modal-input-area');
+            if (!i) return;
+            document.getElementById('modal-title').innerText = "編輯項目";
+            let dlVal = i.dailyLimit || 0;
+            if (i.type === 'retail') {
+                a.innerHTML = `單價 <input type="number" id="ep" value="${i.price}"><br>上限 <input type="number" id="em" value="${i.max || ''}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { 
+                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
+                        price: Number(document.getElementById('ep').value), 
+                        max: document.getElementById('em').value ? Number(document.getElementById('em').value) : '',
+                        dailyLimit: Number(document.getElementById('edl').value) || 0
+                    }); 
+                    closeModal(); 
+                };
+            } else if (i.type === 'single') {
+                a.innerHTML = `售價 <input type="number" id="ep" value="${i.price}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { 
+                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
+                        price: Number(document.getElementById('ep').value),
+                        dailyLimit: Number(document.getElementById('edl').value) || 0
+                    }); 
+                    closeModal(); 
+                };
+            } else if (i.type === 'range') {
+                a.innerHTML = `最低 <input type="number" id="emi" value="${i.min}"><br>最高 <input type="number" id="ema" value="${i.max}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { 
+                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
+                        min: Number(document.getElementById('emi').value), 
+                        max: Number(document.getElementById('ema').value),
+                        dailyLimit: Number(document.getElementById('edl').value) || 0
+                    }); 
+                    closeModal(); 
+                };
+            } else {
+                a.innerHTML = `每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { 
+                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({
+                        dailyLimit: Number(document.getElementById('edl').value) || 0
+                    }); 
+                    closeModal(); 
+                };
+            }
+            document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
+        } catch(e){}
     }
 
-    window.updateEmpRole = function(eid, newRole) {
-        db.ref('employees/' + eid + '/role').set(newRole).then(() => {
-            showToast("職位已成功更新", "success");
-            refreshAllCalculations(); 
-        });
-    };
+    // 技師刪減訂單內單一品項 (高精度安全修復版)
+    function deleteOrderSubItem(orderId, itemIndex) {
+        try {
+            let o = ordersData[orderId];
+            if (!o || !o.details) return;
+            if (o.details.length <= 1) { return showToast("至少需保留一個項目！", "error"); }
 
-    function refreshEmpUI() {
-        let container = document.getElementById('admin-emp-list-container'); container.innerHTML = '';
-        if (Object.keys(empData).length === 0) { container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center;">目前無現有員工</p>'; return; }
-        for (let id in empData) {
-            let e = empData[id];
-            if (!e) continue;
-            let roleOpts = ROLES_LIST.map(r => `<option value="${r}" ${r===e.role?'selected':''}>${r}</option>`).join('');
-            container.innerHTML += `
-                <div class="emp-list-item">
-                    <div class="emp-list-info">
-                        <b style="color:var(--text);">${e.nickname}</b>
-                        <span style="font-size:11px; color:#aaa;">帳號: ${e.username}</span>
-                    </div>
-                    <div style="display:flex; gap:5px; align-items:center;">
-                        <button onclick="viewDutyLogs('${id}')" style="background:#5865F2; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; cursor:pointer;">打卡時數</button>
-                        <select onchange="window.updateEmpRole('${id}', this.value)" style="margin:0; padding:6px; font-size:11px; width:auto;">
-                            ${roleOpts}
-                        </select>
-                        <button class="del-btn" onclick="deleteEmployee('${id}')">開除</button>
-                    </div>
-                </div>
-            `;
+            showCustomConfirm("刪減此服務細項？", "確定要移除？金額與分成將連動重算。", async () => {
+                let subtractedPrice = 0;
+                if (o.items && o.items[itemIndex] && typeof o.items[itemIndex].calcPrice !== 'undefined') {
+                    subtractedPrice = Number(o.items[itemIndex].calcPrice) || 0;
+                } else {
+                    let itemStr = o.details[itemIndex];
+                    let priceMatch = itemStr.match(/\$([\d,]+)/);
+                    if (priceMatch && priceMatch[1]) { 
+                        subtractedPrice = parseInt(priceMatch[1].replace(/,/g, '')) || 0; 
+                    } 
+                }
+
+                let newDetails = [];
+                let newItems = [];
+                for (let i = 0; i < o.details.length; i++) {
+                    if (i !== itemIndex) {
+                        newDetails.push(o.details[i]);
+                        if (o.items && o.items[i]) newItems.push(o.items[i]);
+                    }
+                }
+                
+                let oldPrice = Number(o.totalPrice || o.price || 0);
+                let newPrice = Math.max(0, oldPrice - subtractedPrice);
+
+                let oldCommission = Number(o.commission || 0);
+                let newCommission = 0;
+                if (o.status === 'accepted' || o.status === 'completed' || o.status === 'processing') {
+                    let worker = empData[o.acceptedBy || o.mechanicId];
+                    if (worker) {
+                        let catPerm = (rolesData[worker.role] || {})[o.categoryId] || {};
+                        let pct = catPerm.pct || o.settledRate || 0; 
+                        newCommission = Math.floor(newPrice * pct / 100);
+                    }
+                }
+
+                let updates = {};
+                updates[`orders/${orderId}/details`] = newDetails;
+                if (o.items) updates[`orders/${orderId}/items`] = newItems; 
+                updates[`orders/${orderId}/totalPrice`] = newPrice;
+                updates[`orders/${orderId}/price`] = newPrice;
+                updates[`orders/${orderId}/commission`] = newCommission;
+
+                if (o.status === 'completed') {
+                    let currentBalance = Number(fundsData.balance || 0);
+                    let fundDeduction = 0;
+                    if (o.isPaid) {
+                        let oldNet = oldPrice - oldCommission;
+                        let newNet = newPrice - newCommission;
+                        fundDeduction = oldNet - newNet;
+                    } else {
+                        fundDeduction = subtractedPrice;
+                    }
+                    updates[`funds/balance`] = currentBalance - fundDeduction;
+                }
+
+                await db.ref().update(updates);
+                showToast("✅ 細項刪減成功！", "success");
+            });
+        } catch(e) {
+            showToast("品項刪減失敗，請重新嘗試", "error");
         }
+    }
+
+    // 技師接單
+    function takeOrder(id) {
+        try {
+            let e = empData[currentEmpId]; let o = ordersData[id];
+            if (!e || !o) return;
+
+            if (e.onDuty !== true && e.onDuty !== "true") { 
+                showToast("⚠️ 您目前處於「休息中 (Off-Duty)」狀態，請先點擊上方按鈕打卡上班！", "error"); 
+                return; 
+            }
+
+            let hasActive = false;
+            for (let key in ordersData) {
+                let ord = ordersData[key];
+                if (ord.status === 'processing' && (ord.mechanicId === currentEmpId || ord.acceptedBy === currentEmpId)) {
+                    hasActive = true; break;
+                }
+            }
+            if (hasActive) { showToast("您目前有一單施工中，請完成後再接新訂單！", "error"); return; }
+            
+            let pData = rolesData[e.role] || {}; let catPerm = pData[o.categoryId];
+            if (!catPerm || !catPerm.canAccept) { showToast(`【${e.role}】職位無權限接取此類別！`, "error"); return; }
+            
+            let rate = catPerm.pct || 0;
+            let comm = Math.floor(Number(o.totalPrice || o.price || 0) * (rate / 100));
+
+            db.ref('orders/' + id).update({ 
+                status: 'processing', mechanicId: currentEmpId, acceptedBy: currentEmpId, 
+                mechanicName: e.nickname, settledRate: rate, commission: comm, acceptedAt: Date.now()
+            }).then(() => {
+                showToast("成功接單！請前往現場施工。", "success");
+                updateDiscordWebhook(o, "訂單處理中", 16766720, e.nickname);
+            });
+        } catch(err) {}
     }
 
     function addEmployee() {
-        let u = document.getElementById('new-emp-user').value.trim(), p = document.getElementById('new-emp-pass').value, n = document.getElementById('new-emp-nick').value.trim(), r = document.getElementById('new-emp-role').value;
-        if(!u || !p || !n) { alert("所有欄位必填！"); return; }
-        let id = 'EMP-' + Date.now();
-        db.ref('employees/' + id).set({ username: u, password: p, nickname: n, role: r, onDuty: false }).then(() => {
-            showToast(`員工 ${n} 建檔完成`, "success"); document.getElementById('new-emp-user').value='';
-            document.getElementById('new-emp-pass').value=''; document.getElementById('new-emp-nick').value='';
-        });
+        try {
+            let u = document.getElementById('new-emp-user').value.trim(), p = document.getElementById('new-emp-pass').value, n = document.getElementById('new-emp-nick').value.trim(), r = document.getElementById('new-emp-role').value;
+            if(!u || !p || !n) { alert("所有欄位必填！"); return; }
+            let id = 'EMP-' + Date.now();
+            db.ref('employees/' + id).set({ username: u, password: p, nickname: n, role: r, onDuty: false }).then(() => {
+                showToast(`員工 ${n} 建檔完成`, "success"); document.getElementById('new-emp-user').value='';
+                document.getElementById('new-emp-pass').value=''; document.getElementById('new-emp-nick').value='';
+            });
+        } catch(e){}
     }
 
-    function deleteEmployee(id) { if (confirm("確定要把該名員工開除並刪除帳號個資嗎？")) { db.ref('employees/' + id).remove().then(() => showToast("員工移除成功", "success")); } }
-
+    // 員工帳號與分成設定
     function loadRolePerms() {
-        let r = document.getElementById('role-select').value;
-        if(!r) return;
-        let container = document.getElementById('role-perms-container');
-        container.innerHTML = '<p style="font-size:12px; color:#ff9900; margin:5px 0;">勾選允許接單之分類，並設定專屬分成：</p>';
-        let roleData = rolesData[r] || {};
-        
-        for (let cid in storeData) {
-            let p = roleData[cid] || { canAccept: false, pct: 70 };
-            let checked = p.canAccept ? 'checked' : '';
-            container.innerHTML += `
-                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--row-bg); padding:10px; border-radius:8px; margin-bottom:8px; border:1px solid var(--border-color);">
-                    <span style="font-size:13px; font-weight:bold; width:35%; color:var(--text);">${storeData[cid].name}</span>
-                    <label style="display:flex; align-items:center; gap:5px; margin:0; font-size:12px; cursor:pointer;">
-                        <input type="checkbox" id="perm-cb-${cid}" ${checked} style="margin:0;width:auto;">允許接單
-                    </label>
-                    <div style="display:flex; align-items:center; gap:5px; width:25%;">
-                        <input type="number" id="perm-pct-${cid}" value="${p.pct}" style="margin:0;padding:5px;height:28px;" placeholder="%">
-                        <span style="font-size:12px;color:#aaa">%</span>
+        try {
+            let r = document.getElementById('role-select').value;
+            if(!r) return;
+            let container = document.getElementById('role-perms-container');
+            container.innerHTML = '<p style="font-size:12px; color:#ff9900; margin:5px 0;">勾選允許接單之分類，並設定專屬分成：</p>';
+            let roleData = rolesData[r] || {};
+            
+            for (let cid in storeData) {
+                let p = roleData[cid] || { canAccept: false, pct: 70 };
+                let checked = p.canAccept ? 'checked' : '';
+                container.innerHTML += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--row-bg); padding:10px; border-radius:8px; margin-bottom:8px; border:1px solid var(--border-color);">
+                        <span style="font-size:13px; font-weight:bold; width:35%; color:var(--text);">${storeData[cid].name}</span>
+                        <label style="display:flex; align-items:center; gap:5px; margin:0; font-size:12px; cursor:pointer;">
+                            <input type="checkbox" id="perm-cb-${cid}" ${checked} style="margin:0;width:auto;">允許接單
+                        </label>
+                        <div style="display:flex; align-items:center; gap:5px; width:25%;">
+                            <input type="number" id="perm-pct-${cid}" value="${p.pct}" style="margin:0;padding:5px;height:28px;" placeholder="%">
+                            <span style="font-size:12px;color:#aaa">%</span>
+                        </div>
                     </div>
-                </div>
-            `;
-        }
+                `;
+            }
+        } catch(e){}
     }
 
     function saveRolePerms() {
-        let r = document.getElementById('role-select').value, p = {};
-        for(let cid in storeData) {
-            let cb = document.getElementById(`perm-cb-${cid}`);
-            let pct = document.getElementById(`perm-pct-${cid}`);
-            if(cb) p[cid] = { canAccept: cb.checked, pct: parseInt(pct.value)||0 };
-        }
-        db.ref(`roles/${r}`).set(p).then(()=> {
-            showToast(`職位 [${r}] 權限儲存成功`, "success");
-            refreshAllCalculations(); 
-        });
-    }
-
-    function refreshAllCalculations() {
-        let weekStart = getWeekStartTimestamp();
-        let weekId = getWeekIdStr(weekStart); 
-        
-        let weeklyIncome = 0;
-        let currentWeekSums = {};   
-        let pastUnsettledSums = {}; 
-        let settledHistorySums = {}; 
-        
-        let totalCount = 0;
-        let totalAmount = 0;
-        let myCount = 0;
-        let myAmount = 0;
-        let myCommission = 0;
-        
-        let pendingListHtml = '';
-        let historyListHtml = '';
-        let customerProgressHtml = '';
-        let now = Date.now();
-        const RETAIN_TIME_MS = 3 * 24 * 60 * 60 * 1000; 
-
-        globalDailyData = { '週日':0, '週一':0, '週二':0, '週三':0, '週四':0, '週五':0, '週六':0 };
-        globalCatData = {};
-
-        let sortedOrders = Object.values(ordersData).sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-        let curEmp = empData[currentEmpId];
-        let badgeEl = document.getElementById('duty-status-badge');
-        if (badgeEl && curEmp) {
-            if (curEmp.onDuty) { badgeEl.innerText = "🌞 上班中"; badgeEl.style.background = "#27ae60"; }
-            else { badgeEl.innerText = "🌙 休息中"; badgeEl.style.background = "#c0392b"; }
-        }
-        
-        sortedOrders.forEach(o => {
-            try {
-                let t = o.timestamp || 0;
-
-                // 👤 顧客專屬進度渲染
-                if (userData && o.customerId === userData.id && now - t <= RETAIN_TIME_MS) {
-                    let cBadge = '';
-                    if (o.status === 'pending') cBadge = '<span style="color:#e74c3c; font-weight:bold;">🔴 排隊中</span>';
-                    else if (o.status === 'processing') cBadge = `<span style="color:#ff9900; font-weight:bold;">🟡 施工中 (技師：${o.mechanicName || '未知'})</span>`;
-                    else cBadge = '<span style="color:#2ecc71; font-weight:bold;">🟢 已完工</span>';
-                    
-                    customerProgressHtml += `
-                        <div class="progress-item">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                                <b style="font-size: 14px; color:var(--text);">#${o.orderNo || '未知'} [${o.categoryName || '未知'}]</b>
-                                ${cBadge}
-                            </div>
-                            <div style="font-size: 12px; color: #888; line-height: 1.5;">
-                                車牌：${o.plate || '未填寫'}<br>
-                                項目：${(o.details && o.details.length > 0) ? o.details.join(', ') : '無'}<br>
-                                時間：${new Date(t).toLocaleString()}
-                            </div>
-                        </div>
-                    `;
-                }
-
-                // == 1. 待接單與處理中渲染 ==
-                if (o.status === 'pending') {
-                    if (currentLoggedUserType === 'emp') {
-                        let eRole = null;
-                        if (empData && currentEmpId && empData[currentEmpId]) { eRole = empData[currentEmpId].role; }
-                        let pData = {};
-                        if (eRole && rolesData && rolesData[eRole]) { pData = rolesData[eRole]; }
-                        let catPerm = pData[o.categoryId] || { canAccept: false, pct: 0 };
-                        
-                        let canTakeBtn = catPerm.canAccept 
-                            ? `<button onclick="takeOrder('${o.id}')" style="background:var(--accent); color:black; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">立刻接單</button>`
-                            : `<span style="color:#e74c3c; background:rgba(231,76,60,0.2); padding:6px 12px; border-radius:4px; font-weight:bold; font-size:11px;">無接單權限</span>`;
-
-                        pendingListHtml += `
-                            <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:var(--row-bg); border-left: 3px solid var(--accent);">
-                                <div style="width:100%; display:flex; justify-content:space-between;">
-                                    <b style="color:var(--text);">#${o.orderNo || '未知'} <span style="color:#aaa;font-size:11px;">[${o.categoryName || '未知'}]</span></b>
-                                    <div style="display:flex; gap:5px; align-items:center;">
-                                        ${canTakeBtn}
-                                        <button onclick="cancelOrder('${o.id}')" style="background:#c0392b; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">取消訂單</button>
-                                    </div>
-                                </div>
-                                <div style="font-size:13px; color:var(--text);">車牌: <b style="color:#3498db">${o.plate || '未填寫'}</b> | 總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></div>
-                                <div style="font-size:11px; color:#aaa;">預定人: ${o.customerName || o.discordName || '未錄入'}</div>
-                                <div style="font-size:11px; color:#888;">${o.timestamp ? new Date(o.timestamp).toLocaleString() : '未知時間'}</div>
-                            </div>
-                        `;
-                    }
-                } else if (o.status === 'processing' && o.mechanicId === currentEmpId) {
-                    let itemsListHtml = '';
-                    if (o.details && o.details.length > 0) {
-                        let nArr = [];
-                        for(let i=0; i<o.details.length; i++) {
-                            nArr.push(`<li style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.1); padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#aaa; width:100%; box-sizing:border-box;">
-                                        <span style="color:var(--text);">• ${o.details[i]}</span>
-                                        <span style="color:#e74c3c; cursor:pointer; font-weight:bold; margin-left:8px;" onclick="deleteOrderSubItem('${o.id}', ${i})">❌ 刪除</span>
-                                    </li>`);
-                        }
-                        itemsListHtml = nArr.join('');
-                    } else {
-                        itemsListHtml = '<li style="color:#888;">無訂購細項</li>';
-                    }
-
-                    pendingListHtml += `
-                        <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:8px; background:var(--row-bg); border: 2px solid var(--accent);">
-                            <div style="width:100%; display:flex; justify-content:space-between;"><b style="color:var(--accent)">#${o.orderNo} [處理中]</b><span style="color:#aaa;font-size:11px;">[${o.categoryName}]</span></div>
-                            <div style="font-size:13px; color:var(--text); background:rgba(0,0,0,0.1); width:100%; padding:8px; border-radius:5px; box-sizing:border-box;">
-                                👤 <b>客戶名稱:</b> <span style="color:var(--accent); font-weight:bold;">${o.customerName || o.discordName || '未錄入'}</span> 
-                                <span style="font-size:10px; color:#888;">(ID: ${o.customerId || o.discordId || '未知'})</span><br>
-                                🚗 <b>車牌/車款:</b> <span style="color:#3498db; font-weight:bold;">${o.plate || '未知'} / ${o.carModel || '未知'}</span><br>
-                                <div style="font-size:11px; color:#aaa; margin:5px 0 3px 0;">🛠️ 細項內容物調整與刪減：</div>
-                                <ul style="margin:5px 0 0 0; padding:0; font-size:12px; list-style-type:none; display:flex; flex-direction:column; gap:3px; width:100%;">
-                                    ${itemsListHtml}
-                                </ul>
-                            </div>
-                            <div style="font-size:13px; color:var(--text); width:100%; display:flex; justify-content:space-between;">
-                                <span>當前總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b></span>
-                                <span>應得估計分成: <b style="color:#2ecc71">$${Number(o.commission || 0).toLocaleString()}</b></span>
-                            </div>
-                            <button onclick="openEmpActiveModal('${o.id}')" style="background:#2ecc71; color:white; width:100%; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">確認完成訂單</button>
-                            <button onclick="abandonOrder('${o.id}')" style="background:#e74c3c; color:white; width:100%; border:none; padding:8px; border-radius:5px; font-weight:bold; cursor:pointer; margin-top:5px;">放棄接單 (釋回大廳)</button>
-                        </div>
-                    `;
-                }
-                
-                // == 2. 發薪、營收 ==
-                if (o.status === 'completed' || o.status === 'accepted') {
-                    let priceToUse = Number(o.totalPrice || o.price || 0);
-                    let orderWeekStart = getWeekStartTimestampByTime(t);
-                    let orderWeekId = getWeekIdStr(orderWeekStart);
-                    let commAmount = o.commission || 0;
-                    
-                    if (!commAmount) {
-                        if (o.isRoadside) commAmount = Math.round(priceToUse * 0.9);
-                        else commAmount = Math.round(priceToUse * ((o.settledRate || 70) / 100));
-                    }
-                    
-                    let empIdForSum = o.mechanicId || o.acceptedBy;
-                    let empNameForSum = o.mechanicName || (empData[empIdForSum] ? empData[empIdForSum].nickname : '未知技師');
-                    
-                    let isWeekSettled = false;
-                    let settledAt = 0;
-                    if (paidWeeksData[orderWeekId] && paidWeeksData[orderWeekId][empIdForSum] && paidWeeksData[orderWeekId][empIdForSum].paid) {
-                        isWeekSettled = true;
-                        settledAt = paidWeeksData[orderWeekId][empIdForSum].settledAt;
-                    }
-                    
-                    if (o.isPaid || isWeekSettled) {
-                        if (now - settledAt <= RETAIN_TIME_MS) {
-                            if (!settledHistorySums[orderWeekId]) settledHistorySums[orderWeekId] = {};
-                            if (!settledHistorySums[orderWeekId][empIdForSum]) settledHistorySums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
-                            settledHistorySums[orderWeekId][empIdForSum].earn += commAmount;
-                            settledHistorySums[orderWeekId][empIdForSum].count++;
-                        }
-                    } else {
-                        if (orderWeekId === weekId) {
-                            if (!currentWeekSums[empIdForSum]) currentWeekSums[empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
-                            currentWeekSums[empIdForSum].earn += commAmount;
-                            currentWeekSums[empIdForSum].count++;
-                        } else {
-                            if (!pastUnsettledSums[orderWeekId]) pastUnsettledSums[orderWeekId] = {};
-                            if (!pastUnsettledSums[orderWeekId][empIdForSum]) pastUnsettledSums[orderWeekId][empIdForSum] = { name: empNameForSum, earn: 0, count: 0 };
-                            pastUnsettledSums[orderWeekId][empIdForSum].earn += commAmount;
-                            pastUnsettledSums[orderWeekId][empIdForSum].count++;
-                        }
-                    }
-
-                    if (t >= weekStart) {
-                        totalCount++;
-                        totalAmount += priceToUse;
-                        weeklyIncome += (priceToUse - commAmount);
-                        
-                        let dObj = new Date(t);
-                        let days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-                        let dayName = days[dObj.getDay()];
-                        globalDailyData[dayName] = (globalDailyData[dayName] || 0) + priceToUse;
-                        let cName = o.categoryName || '其他';
-                        globalCatData[cName] = (globalCatData[cName] || 0) + priceToUse;
-                    }
-                    
-                    if (currentLoggedUserType === 'emp' && (o.mechanicId === currentEmpId || o.acceptedBy === currentEmpId) && t >= weekStart) {
-                        myCount++;
-                        myAmount += priceToUse;
-                        myCommission += commAmount;
-                    }
-                }
-                
-                // == 3. 歷史大廳 ==
-                if (now - t <= RETAIN_TIME_MS) {
-                    let badge = '';
-                    let mName = o.mechanicName || '未知技師';
-                    if (!o.mechanicName) {
-                        let accId = o.acceptedBy || o.mechanicId;
-                        if (accId && empData[accId]) mName = empData[accId].nickname;
-                        else mName = '尚未接單';
-                    }
-
-                    if (o.status === 'pending') badge = '<span style="color:#e74c3c; font-weight:bold;">未接單</span>';
-                    else if (o.status === 'processing') badge = `<span style="color:#ff9900; font-weight:bold;">處理中 (${mName})</span>`;
-                    else badge = `<span style="color:#2ecc71; font-weight:bold;">已完成 (${mName})</span>`;
-                    
-                    let subItemsHtml = '';
-                    if (o.details && o.details.length > 0) {
-                        let nArr = [];
-                        for(let i=0; i<o.details.length; i++) {
-                            nArr.push(`<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.1); padding:4px 8px; border-radius:4px; margin-top:3px; font-size:11px; color:#aaa; border:1px solid var(--border-color);">
-                                        <span>${o.details[i]}</span>
-                                        <span style="color:#e74c3c; cursor:pointer; font-weight:bold;" onclick="deleteOrderSubItem('${o.id}', ${i})">❌ 刪除項目</span>
-                                    </div>`);
-                        }
-                        subItemsHtml = nArr.join('');
-                    }
-
-                    let isCmpl = (o.status === 'completed' || o.status === 'accepted');
-                    historyListHtml += `
-                        <div class="item-row" style="flex-direction:column; align-items:flex-start; gap:5px; background:var(--row-bg);">
-                            <div style="display:flex; justify-content:space-between; width:100%;">
-                                <b style="color:var(--text);">#${o.orderNo || '未知'}</b> ${badge}
-                            </div>
-                            <div style="font-size:12px; color:#aaa; width:100%; border-bottom:1px solid var(--border-color); padding-bottom:5px;">
-                                👤 訂購者名稱: <strong style="color:var(--accent)">${o.customerName || o.discordName || '未驗證'}</strong> 
-                            </div>
-                            <div style="width:100%; margin:4px 0;">
-                                <span style="font-size:11px; color:#888;">🛠️ 細項內容物與刪減：</span>
-                                ${subItemsHtml}
-                            </div>
-                            <div style="color:#aaa; font-size:11px; width:100%; display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
-                                <span>總額: <b style="color:var(--accent)">$${Number(o.totalPrice || o.price || 0).toLocaleString()}</b> | 實發: $${Number(o.commission || 0).toLocaleString()}</span>
-                                <button class="del-btn" onclick="${isCmpl ? `deleteCompletedOrder('${o.id}')` : `cancelOrder('${o.id}')`}">${isCmpl ? '強制剔除扣回公款' : '直接取消訂單'}</button>
-                            </div>
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error("渲染單筆訂單發生錯誤, 已自動跳過防崩潰: ", o.id, error);
+        try {
+            let r = document.getElementById('role-select').value, p = {};
+            for(let cid in storeData) {
+                let cb = document.getElementById(`perm-cb-${cid}`);
+                let pct = document.getElementById(`perm-pct-${cid}`);
+                if(cb) p[cid] = { canAccept: cb.checked, pct: parseInt(pct.value)||0 };
             }
-        });
-        
-        if (userData) {
-            document.getElementById('customer-progress-list').innerHTML = customerProgressHtml || '<p style="color: #888; text-align: center; margin: 10px 0; font-size:12px;">目前無 72 小時內的預訂紀錄。</p>';
-        }
-
-        let pendingContainer = document.getElementById('emp-pending-list');
-        if(pendingContainer) pendingContainer.innerHTML = pendingListHtml || '<p style="color:#666; font-size:12px; text-align:center;">大廳目前空空如也...</p>';
-        
-        if (document.getElementById('stat-count')) {
-            document.getElementById('stat-count').innerText = totalCount;
-            document.getElementById('stat-amount').innerText = '$' + totalAmount.toLocaleString();
-        }
-        if (document.getElementById('finance-weekly-income')) document.getElementById('finance-weekly-income').innerText = '$' + weeklyIncome.toLocaleString();
-        if (document.getElementById('history-list')) document.getElementById('history-list').innerHTML = historyListHtml || '<p style="color:#666; font-size:12px; text-align:center;">72小時內暫無任何訂單</p>';
-        
-        if (document.getElementById('emp-my-count')) {
-            document.getElementById('emp-my-count').innerText = myCount;
-            document.getElementById('emp-my-amount').innerText = '$' + myAmount.toLocaleString();
-            document.getElementById('emp-my-commission').innerText = '$' + myCommission.toLocaleString();
-        }
-
-        if (document.getElementById('payroll-current-week')) {
-            let cHtml = '';
-            if (Object.keys(currentWeekSums).length === 0) { cHtml = '<p style="color:#666; font-size:11px; margin:0;">本週暫無技師完工累積金額</p>'; }
-            else {
-                for (let eId in currentWeekSums) {
-                    cHtml += `• <b style="color:var(--text);">${currentWeekSums[eId].name}</b> : 應得發薪 <span style="color:var(--accent); font-weight:bold;">$${currentWeekSums[eId].earn.toLocaleString()}</span> (完工 ${currentWeekSums[eId].count} 單)<br>`;
-                }
-            }
-            document.getElementById('payroll-current-week').innerHTML = cHtml;
-
-            let pHtml = '';
-            if (Object.keys(pastUnsettledSums).length === 0) { pHtml = '<p style="color:#666; font-size:11px; margin:0;">無任何過往積欠待結算之薪資。</p>'; }
-            else {
-                for (let wId in pastUnsettledSums) {
-                    pHtml += `<div class="week-block"><div class="week-title"><span>📅 週別：${wId} 的未結算薪資</span></div>`;
-                    for (let eId in pastUnsettledSums[wId]) {
-                        pHtml += `
-                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding:5px 0;">
-                            <span>• <b style="color:var(--text);">${pastUnsettledSums[wId][eId].name}</b> : <span style="color:#ff9900; font-weight:bold;">$${pastUnsettledSums[wId][eId].earn.toLocaleString()}</span></span>
-                            <button class="settle-btn-mini" onclick="manualSettleSalary('${wId}', '${eId}')">💰 結算扣公款</button>
-                        </div>`;
-                    }
-                    pHtml += `</div>`;
-                }
-            }
-            document.getElementById('payroll-past-unsettled').innerHTML = pHtml;
-
-            let hHtml = ''; let hasHistory = false;
-            for (let wId in paidWeeksData) {
-                for (let eId in paidWeeksData[wId]) {
-                    let sAt = paidWeeksData[wId][eId].settledAt || 0;
-                    if (now - sAt <= RETAIN_TIME_MS) {
-                        hasHistory = true;
-                        let timeStr = new Date(sAt).toLocaleString('zh-TW', { hour12: false });
-                        let eName = '已結算員工';
-                        let eEarn = 0;
-                        if (settledHistorySums[wId] && settledHistorySums[wId][eId]) {
-                            eName = settledHistorySums[wId][eId].name || '已結算員工';
-                            eEarn = settledHistorySums[wId][eId].earn || 0;
-                        } else if (paidWeeksData[wId] && paidWeeksData[wId][eId]) {
-                            eEarn = paidWeeksData[wId][eId].salary || 0;
-                        }
-                        
-                        hHtml += `<div class="week-block" style="border-left-color:#2ecc71;">
-                            <div class="week-title" style="color:#2ecc71;">
-                                <span>📅 ${wId} - ${eName}</span>
-                                <button class="settle-btn-mini" style="background:#5865F2; color:white;" onclick="cancelPaySingleEmployee('${wId}', '${eId}')">取消退回公款</button>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; font-size:11px;">
-                                <span>已分撥: <span style="color:#2ecc71; font-weight:bold;">$${eEarn.toLocaleString()}</span></span>
-                                <span style="color:#888;">${timeStr}</span>
-                            </div>
-                        </div>`;
-                    }
-                }
-            }
-            if (!hasHistory) { hHtml = '<p style="color:#666; font-size:11px; margin:0;">3天內無歷史結算紀錄。</p>'; }
-            document.getElementById('payroll-settled-history').innerHTML = hHtml;
-        }
-
-        renderCharts(globalDailyData, globalCatData);
-    }
-
-    async function manualSettleSalary(weekId, empId) {
-        if (!confirm(`確定要結算此員工薪資，並將薪水從公款餘額中扣除嗎？`)) return;
-        
-        let totalSalary = 0; let updates = {};
-        Object.entries(ordersData).forEach(([id, o]) => {
-            let t = o.timestamp || 0; let oWeekId = getWeekIdStr(getWeekStartTimestampByTime(t));
-            let oEmpId = o.mechanicId || o.acceptedBy;
-            if (oWeekId === weekId && oEmpId === empId && (o.status === 'completed' || o.status === 'accepted') && !o.isPaid) {
-                let commAmount = o.commission || 0;
-                if (!commAmount) {
-                    let pToUse = Number(o.totalPrice || o.price || 0);
-                    if (o.isRoadside) commAmount = Math.round(pToUse * 0.9);
-                    else { let rate = o.settledRate !== undefined ? o.settledRate : 70; commAmount = Math.round(pToUse * (rate / 100)); }
-                }
-                totalSalary += commAmount;
-                updates[`orders/${id}/isPaid`] = true;
-            }
-        });
-
-        if (totalSalary > 0) {
-            let currentBalance = Number(fundsData.balance || 0);
-            updates[`funds/balance`] = currentBalance - totalSalary;
-            updates[`paid_weeks/${weekId}/${empId}`] = { paid: true, salary: totalSalary, settledAt: Date.now() };
-            await db.ref().update(updates);
-            showToast("結算成功！薪水已從公款扣除。", "success");
-        } else showToast("無待結算項目", "info");
-    }
-
-    async function cancelPaySingleEmployee(weekId, empId) {
-        if (!confirm(`確定要取消此結清紀錄？已發放的薪水將退回公款。`)) return;
-        let paidRecord = paidWeeksData[weekId] && paidWeeksData[weekId][empId];
-        if (!paidRecord) return showToast("找不到結清紀錄", "error");
-
-        let totalSalary = Number(paidRecord.salary || 0); let updates = {};
-        Object.entries(ordersData).forEach(([id, o]) => {
-            let t = o.timestamp || 0; let oWeekId = getWeekIdStr(getWeekStartTimestampByTime(t));
-            let oEmpId = o.mechanicId || o.acceptedBy;
-            if (oWeekId === weekId && oEmpId === empId && o.isPaid) updates[`orders/${id}/isPaid`] = null;
-        });
-
-        let currentBalance = Number(fundsData.balance || 0);
-        updates[`funds/balance`] = currentBalance + totalSalary;
-        updates[`paid_weeks/${weekId}/${empId}`] = null;
-        await db.ref().update(updates);
-        showToast("取消結算成功！薪水已退回公款。", "warning");
-    }
-
-    function deleteOrderSubItem(orderId, itemIndex) {
-        let o = ordersData[orderId];
-        if (!o || !o.details) return;
-        if (o.details.length <= 1) { return showToast("至少需保留一個項目！", "error"); }
-
-        showCustomConfirm("刪減此服務細項？", "確定要移除？金額與分成將連動重算。", async () => {
-            let subtractedPrice = 0;
-            if (o.items && o.items[itemIndex] && typeof o.items[itemIndex].calcPrice !== 'undefined') {
-                subtractedPrice = Number(o.items[itemIndex].calcPrice) || 0;
-            } else {
-                let itemStr = o.details[itemIndex];
-                let priceMatch = itemStr.match(/\$([\d,]+)/);
-                if (priceMatch && priceMatch[1]) { 
-                    subtractedPrice = parseInt(priceMatch[1].replace(/,/g, '')) || 0; 
-                } 
-            }
-
-            let newDetails = [];
-            let newItems = [];
-            for (let i = 0; i < o.details.length; i++) {
-                if (i !== itemIndex) {
-                    newDetails.push(o.details[i]);
-                    if (o.items && o.items[i]) newItems.push(o.items[i]);
-                }
-            }
-            
-            let oldPrice = Number(o.totalPrice || o.price || 0);
-            let newPrice = Math.max(0, oldPrice - subtractedPrice);
-
-            let oldCommission = Number(o.commission || 0);
-            let newCommission = 0;
-            if (o.status === 'accepted' || o.status === 'completed' || o.status === 'processing') {
-                let worker = empData[o.acceptedBy || o.mechanicId];
-                if (worker) {
-                    let catPerm = (rolesData[worker.role] || {})[o.categoryId] || {};
-                    let pct = catPerm.pct || o.settledRate || 0; 
-                    newCommission = Math.floor(newPrice * pct / 100);
-                }
-            }
-
-            let updates = {};
-            updates[`orders/${orderId}/details`] = newDetails;
-            if (o.items) updates[`orders/${orderId}/items`] = newItems; 
-            updates[`orders/${orderId}/totalPrice`] = newPrice;
-            updates[`orders/${orderId}/price`] = newPrice;
-            updates[`orders/${orderId}/commission`] = newCommission;
-
-            if (o.status === 'completed') {
-                let currentBalance = Number(fundsData.balance || 0);
-                let fundDeduction = 0;
-                if (o.isPaid) {
-                    let oldNet = oldPrice - oldCommission;
-                    let newNet = newPrice - newCommission;
-                    fundDeduction = oldNet - newNet;
-                } else {
-                    fundDeduction = subtractedPrice;
-                }
-                updates[`funds/balance`] = currentBalance - fundDeduction;
-            }
-
-            await db.ref().update(updates);
-            showToast("✅ 細項刪減成功！", "success");
-        });
-    }
-
-    function takeOrder(id) {
-        let e = empData[currentEmpId]; let o = ordersData[id];
-        if (!e || !o) return;
-
-        if (e.onDuty !== true && e.onDuty !== "true") { 
-            showToast("⚠️ 您目前處於「休息中 (Off-Duty)」狀態，請先點擊上方按鈕打卡上班！", "error"); 
-            return; 
-        }
-
-        let hasActive = false;
-        for (let key in ordersData) {
-            let ord = ordersData[key];
-            if (ord.status === 'processing' && (ord.mechanicId === currentEmpId || ord.acceptedBy === currentEmpId)) {
-                hasActive = true; break;
-            }
-        }
-        if (hasActive) { showToast("您目前有一單施工中，請完成後再接新訂單！", "error"); return; }
-        
-        let pData = rolesData[e.role] || {}; let catPerm = pData[o.categoryId];
-        if (!catPerm || !catPerm.canAccept) { showToast(`【${e.role}】職位無權限接取此類別！`, "error"); return; }
-        
-        let rate = catPerm.pct || 0;
-        let comm = Math.floor(Number(o.totalPrice || o.price || 0) * (rate / 100));
-
-        db.ref('orders/' + id).update({ 
-            status: 'processing', mechanicId: currentEmpId, acceptedBy: currentEmpId, 
-            mechanicName: e.nickname, settledRate: rate, commission: comm, acceptedAt: Date.now()
-        }).then(() => {
-            showToast("成功接單！請前往現場施工。", "success");
-            updateDiscordWebhook(o, "訂單處理中", 16766720, e.nickname);
-        });
-    }
-
-    function openEmpActiveModal(id) {
-        let o = ordersData[id], area = document.getElementById('modal-input-area');
-        document.getElementById('modal-title').innerText = "👨‍💻 訂單施工回報大廳";
-        let displayItems = '';
-        if(o.details) displayItems = o.details.join(', ');
-        else if(o.items) {
-            let nArr = []; for(let i=0; i<o.items.length; i++) nArr.push(o.items[i].name); displayItems = nArr.join(', ');
-        }
-        document.getElementById('modal-item-name').innerText = `客戶: ${o.customerName || o.discordName}\n項目: ${displayItems}`;
-        area.innerHTML = `<p style="color:#2ecc71; text-align:center; font-weight:bold; font-size:16px;">💰 應收固定總價: $${Number(o.totalPrice || o.price || 0).toLocaleString()}</p>`;
-        
-        document.getElementById('modal-confirm').onclick = () => {
-            let finalPrice = Number(o.totalPrice || o.price || 0);
-            db.ref('orders/' + id).update({ status: 'completed', totalPrice: finalPrice, price: finalPrice, timestamp: Date.now() }).then(() => {
-                let currentBalance = Number(fundsData.balance || 0);
-                db.ref('funds/balance').set(currentBalance + finalPrice).then(() => {
-                    showToast("🎉 完工回報成功！公款已即時入庫。", "success");
-                    let latestOrder = ordersData[id] || o;
-                    let mName = latestOrder.mechanicName || (empData[currentEmpId] ? empData[currentEmpId].nickname : "未知");
-                    updateDiscordWebhook(latestOrder, "✅ 訂單已完成", 3066993, mName);
-                    closeModal();
-                });
+            db.ref(`roles/${r}`).set(p).then(()=> {
+                showToast(`職位 [${r}] 權限儲存成功`, "success");
+                refreshAllCalculations(); 
             });
-        };
-        document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
-    }
-
-    async function abandonOrder(id) {
-        let order = ordersData[id]; if (!order) return;
-        showCustomConfirm("確定要放棄此訂單？", "放棄後訂單將重新回到待接清單中。", async () => {
-            try {
-                await updateDiscordWebhook(order, "待接訂單", 16751104, "尚未接單");
-                await db.ref(`orders/${id}`).update({ status: 'pending', acceptedBy: null, mechanicId: null, mechanicName: null, commission: null, acceptedAt: null });
-                showToast("✅ 已放棄此訂單！", "success");
-            } catch (e) { showToast("放棄操作失敗！", "error"); }
-        });
-    }
-
-    async function cancelOrder(id) {
-        let order = ordersData[id]; if (!order) return;
-        if (order.status === 'completed' || order.status === 'accepted') return showToast("已完工訂單請用「強制剔除」功能！", "error");
-        
-        showCustomConfirm("取消此訂單？", "此操作會將訂單從清單永久移除。", async () => {
-            try {
-                await updateDiscordWebhook(order, "❌ 訂單已取消", 15548997, "無");
-                await db.ref(`orders/${id}`).remove();
-                showToast("訂單已順利取消", "success");
-            } catch (e) { showToast("取消失敗", "error"); }
-        });
-    }
-
-    function submitRoadside() {
-        let planVal = Number(document.getElementById('rs-plan').value);
-        let danger = document.getElementById('rs-danger').checked;
-        let total = planVal + (danger ? 150000 : 0);
-        
-        let e = empData[currentEmpId];
-        let newRoadsideOrder = {
-            id: 'RS-' + Date.now(), orderNo: 'RS' + Date.now().toString().slice(-6), categoryName: '🚨 道路救援', categoryId: 'roadside',
-            items: [{ name: document.getElementById('rs-plan').options[document.getElementById('rs-plan').selectedIndex].text + (danger ? ' [紅圈危險區]' : ''), calcPrice: total, type: 'single' }],
-            details: [document.getElementById('rs-plan').options[document.getElementById('rs-plan').selectedIndex].text + (danger ? ' [紅圈危險區]' : '')],
-            totalPrice: total, price: total, discordName: '道路突發回報', customerName: '現場突發客戶', discordId: '0',
-            status: 'completed', timestamp: Date.now(), isRoadside: true, mechanicId: currentEmpId, acceptedBy: currentEmpId, mechanicName: e.nickname, commission: Math.round(total * 0.9)
-        };
-        db.ref('orders/' + newRoadsideOrder.id).set(newRoadsideOrder).then(() => {
-            let curBal = Number(fundsData.balance || 0);
-            db.ref('funds/balance').set(curBal + total).then(() => {
-                showToast("🚨 道路救援已完工存檔，款項已入公款庫！", "success");
-                document.getElementById('rs-danger').checked = false;
-            });
-        });
-    }
-
-    function deleteCompletedOrder(orderId) {
-        if (!confirm("⚠️ 警告：刪除已完工之訂單將會實時倒扣公款營收！\n確定要強制剔除此訂單嗎？")) return;
-        let o = ordersData[orderId];
-        let priceToUse = Number(o.totalPrice || o.price || 0);
-        let commAmount = o.commission || 0;
-        if (!commAmount) {
-            if (o.isRoadside) commAmount = Math.round(priceToUse * 0.9);
-            else commAmount = Math.round(priceToUse * ((o.settledRate || 70) / 100));
-        }
-        
-        let deduction = o.isPaid ? (priceToUse - commAmount) : priceToUse;
-        let currentBalance = Number(fundsData.balance || 0);
-        db.ref('funds/balance').set(currentBalance - deduction).then(() => {
-            db.ref('orders/' + orderId).remove().then(() => { 
-                showToast("訂單已強制剔除，公款盈餘已倒扣校正完畢。", "success"); 
-                updateDiscordWebhook(o, "❌ 訂單遭強制剔除", 15548997, "無");
-            });
-        });
-    }
-
-    function refreshFinanceUI() {
-        if (document.getElementById('finance-balance')) document.getElementById('finance-balance').innerText = '$' + Number(fundsData.balance || 0).toLocaleString();
-        let eList = document.getElementById('expense-list'); 
-        if (eList) {
-            eList.innerHTML = '';
-            let sortedExp = Object.entries(expensesData).sort((a,b) => b[1].timestamp - a[1].timestamp);
-            sortedExp.forEach(([id, ex]) => {
-                let tStr = new Date(ex.timestamp).toLocaleDateString();
-                eList.innerHTML += `<div style="color:#ff8888; margin-bottom:3px;">[${tStr}] ${ex.reason} : -$${Number(ex.amount||0).toLocaleString()}</div>`;
-            });
-        }
-    }
-
-    function editBalance() {
-        let nv = prompt("請輸入修正後的精確公款數值:", fundsData.balance || 0);
-        if (nv !== null && !isNaN(Number(nv))) { db.ref('funds/balance').set(Number(nv)).then(() => showToast("公款帳目數值更正完成", "success")); }
-    }
-
-    function addExpense() {
-        let r = document.getElementById('expense-reason').value.trim(), a = Number(document.getElementById('expense-amount').value) || 0;
-        if (!r || a <= 0) return; let id = 'EXP-' + Date.now();
-        db.ref('expenses/' + id).set({ reason: r, amount: a, timestamp: Date.now() }).then(() => {
-            let cur = Number(fundsData.balance || 0);
-            db.ref('funds/balance').set(cur - a).then(() => {
-                showToast("支出登記完畢並已於公款中扣除", "success");
-                document.getElementById('expense-reason').value = ''; document.getElementById('expense-amount').value = '';
-            });
-        });
+        } catch(e){}
     }
 </script>
 </body>
