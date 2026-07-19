@@ -429,7 +429,7 @@
 </div>
 
 <script>
-    // === 🛠️ 安全防禦核心：日誌與輔助運算（即使入參損壞也絕不報錯） ===
+    // === 🛠️ 安全防禦核心：時數運算與隔日重置機制（即使 Firebase 欄位不齊也絕不當機） ===
     function getWeekStartTimestamp() {
         try {
             let now = new Date(), currentDay = now.getDay();
@@ -555,7 +555,6 @@
     let globalDailyData = {};
     let globalCatData = {};
 
-    // === 🛠️ 頁面安全初始化與監聽 (保證無錯運行) ===
     window.onload = () => {
         try {
             const hash = new URLSearchParams(window.location.hash.slice(1));
@@ -577,7 +576,7 @@
             document.getElementById('new-emp-role').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
             document.getElementById('role-select').innerHTML = ROLES_LIST.map(r => `<option value="${r}">${r}</option>`).join('');
             
-            // 安全包裝：資料庫連線監聽
+            // 安全監聽 Firebase 變化，不鎖死
             db.ref('xiangyi_shop').on('value', s => { try { storeData = s.val() || {}; refreshUI(); } catch(e){ console.error(e); } });
             db.ref('employees').on('value', s => { try { empData = s.val() || {}; refreshEmpUI(); refreshAllCalculations(); } catch(e){ console.error(e); } });
             db.ref('roles').on('value', s => { try { rolesData = s.val() || {}; refreshAllCalculations(); } catch(e){ console.error(e); } }); 
@@ -631,7 +630,78 @@
         }
     };
 
-    // 項目與大廳渲染
+    // 🔊 解鎖瀏覽器音效自動播放
+    document.addEventListener('click', () => {
+        try {
+            const audioNewOrder = document.getElementById('audio-new-order');
+            const audioAcceptOrder = document.getElementById('audio-accept-order');
+            if (audioNewOrder && audioNewOrder.paused) {
+                audioNewOrder.play().then(() => { audioNewOrder.pause(); audioNewOrder.currentTime = 0; }).catch(e => {});
+            }
+            if (audioAcceptOrder && audioAcceptOrder.paused) {
+                audioAcceptOrder.play().then(() => { audioAcceptOrder.pause(); audioAcceptOrder.currentTime = 0; }).catch(e => {});
+            }
+        } catch(e){}
+    }, { once: true });
+
+    async function generateOrderNo() {
+        try {
+            const today = new Date();
+            const dateStr = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+            const countRef = db.ref(`order_counts/${dateStr}`);
+            let count = 1;
+            const snapshot = await countRef.once('value');
+            if (snapshot.exists()) { count = snapshot.val() + 1; }
+            await countRef.set(count);
+            return `${dateStr}${count.toString().padStart(4, '0')}`;
+        } catch(e) {
+            return Date.now().toString().slice(-12);
+        }
+    }
+
+    function showToast(msg, type = 'info') {
+        try {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.style.pointerEvents = 'auto';
+            toast.style.background = type === 'error' ? '#c0392b' : type === 'success' ? '#27ae60' : 'var(--border-color)';
+            toast.style.color = '#fff';
+            toast.style.padding = '12px 24px';
+            toast.style.borderRadius = '8px';
+            toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+            toast.style.fontSize = '14px';
+            toast.style.fontWeight = 'bold';
+            toast.style.marginBottom = '10px';
+            toast.style.textAlign = 'center';
+            toast.style.animation = 'fadeIn 0.3s forwards, fadeOut 0.3s 2.7s forwards';
+            toast.innerText = msg;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        } catch(e){}
+    }
+
+    function showCustomConfirm(title, message, callback) {
+        try {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-item-name').innerText = message;
+            document.getElementById('modal-input-area').innerHTML = '';
+            document.getElementById('modal-confirm').onclick = () => { callback(); closeModal(); };
+            document.getElementById('custom-modal').style.display = 'block';
+            document.getElementById('modal-overlay').style.display = 'block';
+        } catch(e){}
+    }
+
+    function closeModal() {
+        try {
+            document.getElementById('custom-modal').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'none';
+        } catch(e){}
+    }
+
+    function loginDiscord() {
+        window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
+    }
+
     function refreshUI() {
         try {
             const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
@@ -683,7 +753,7 @@
                 }
             }
         } catch(e) {
-            console.error("前台品項初始化 UI 崩潰防護:", e);
+            console.error("品項 UI 初始化出錯: ", e);
         }
     }
 
@@ -750,7 +820,632 @@
         } catch(e){}
     }
 
-    // === 🔒 100% 絕對防墜毀 🔒 系統數據、圖表與打卡結算模組 ===
+    function calcTotalCost() {
+        try {
+            let catId = document.getElementById('pCat').value; if (!catId) return;
+            let cat = storeData[catId], total = 0, hintHtml = '<b>📌 計價細目明細：</b><br>';
+            let hasChecked = false;
+            
+            for (let itId in cat.items) {
+                let it = cat.items[itId], chk = document.getElementById(`chk-${itId}`);
+                if (chk && chk.checked) {
+                    hasChecked = true;
+                    if (it.type === 'single') { 
+                        let p = Number(it.price) || 0; total += p; hintHtml += `• ${it.name}：$${p.toLocaleString()}<br>`; 
+                    }
+                    else if (it.type === 'retail') {
+                        let p = Number(it.price) || 0;
+                        let q = parseInt(document.getElementById(`qty-${itId}`).value) || 1;
+                        let sub = p * q; total += sub; hintHtml += `• ${it.name} (數量 x${q})：$${sub.toLocaleString()}<br>`;
+                    } else if (it.type === 'range') {
+                        let p = Number(it.min) || 0;
+                        total += p; hintHtml += `• ${it.name} (基本起跳價)：$${p.toLocaleString()} <span style="color:#ff9900;">(現場依難度最高調整至 $${(Number(it.max)||0).toLocaleString()})</span><br>`;
+                    } else if (it.type === 'custom') {
+                        let val = parseFloat(document.getElementById(`custom-val-${itId}`).value) || 0;
+                        let sub = Math.round(val * 0.1); total += sub; hintHtml += `• ${it.name} (購入價值 $${val.toLocaleString()} x 10%)：$${sub.toLocaleString()}<br>`;
+                    }
+                }
+            }
+            
+            let hintEl = document.getElementById('total-calc-hint');
+            if (hasChecked) { 
+                hintEl.innerHTML = hintHtml + `-----------------------<br>💰 <b>目前估計總計金額：$${total.toLocaleString()}</b>`; 
+                hintEl.style.display = 'block'; 
+                document.getElementById('pPrice').value = `$${total.toLocaleString()}`; 
+            }
+            else { hintEl.style.display = 'none'; document.getElementById('pPrice').value = ''; }
+        } catch(e){}
+    }
+
+    async function updateDiscordWebhook(order, statusText, color, mechanicName) {
+        try {
+            if (!order.webhookUrl || !order.messageId || !order.embedData) return;
+            let embed = JSON.parse(JSON.stringify(order.embedData));
+            embed.color = color;
+            
+            let statusField = null;
+            for(let i=0; i<embed.fields.length; i++) {
+                if(embed.fields[i].name.indexOf("處理狀態") !== -1) { statusField = embed.fields[i]; break; }
+            }
+            if (statusField) {
+                statusField.value = statusText;
+                if(statusText.indexOf("取消") !== -1 || statusText.indexOf("剔除") !== -1) statusField.name = "❌ 處理狀態";
+                else if(statusText.indexOf("完成") !== -1) statusField.name = "🟢 處理狀態";
+                else if(statusText.indexOf("處理中") !== -1) statusField.name = "🟡 處理狀態";
+                else statusField.name = "🔴 處理狀態";
+            } else {
+                embed.fields.push({ name: "🔴 處理狀態", value: statusText });
+            }
+
+            let empField = null;
+            for(let i=0; i<embed.fields.length; i++) {
+                if(embed.fields[i].name.indexOf("接單員工") !== -1) { empField = embed.fields[i]; break; }
+            }
+            if (empField) {
+                empField.value = mechanicName || "尚未接單";
+            } else {
+                embed.fields.push({ name: "🛠️ 接單員工", value: mechanicName || "尚未接單", inline: true });
+            }
+
+            let urlParts = order.webhookUrl.split('?');
+            let baseUrl = urlParts[0];
+            let queryParams = urlParts.length > 1 ? ('?' + urlParts[1]) : '';
+            let patchUrl = baseUrl + '/messages/' + order.messageId + queryParams;
+            
+            await fetch(patchUrl, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ embeds: [embed] })
+            });
+        } catch (e) {
+            console.error("Webhook 更新錯誤:", e);
+        }
+    }
+
+    function getTodayPurchasedQty(discordId, itemId) {
+        try {
+            let todayStart = getTodayStartTimestamp();
+            let count = 0;
+            Object.values(ordersData || {}).forEach(o => {
+                if (o.timestamp >= todayStart && o.customerId === discordId && o.status !== 'cancelled') {
+                    if (o.items && Array.isArray(o.items)) {
+                        o.items.forEach(item => {
+                            if (item.id === itemId) {
+                                count += (Number(item.qty) || 1);
+                            }
+                        });
+                    }
+                }
+            });
+            return count;
+        } catch(e) {
+            return 0;
+        }
+    }
+
+    async function sendOrder() {
+        try {
+            if (!userData) { showToast("請先點擊上方按鈕，完成 Discord 帳號聯動驗證後再送出預定！", "error"); return; }
+            let catId = document.getElementById('pCat').value; if (!catId) { showToast("請選擇業務類別", "error"); return; }
+            let cat = storeData[catId], selectedItems = [], computedPrice = 0;
+            
+            for (let itId in cat.items) {
+                let it = cat.items[itId], chk = document.getElementById(`chk-${itId}`);
+                if (chk && chk.checked) {
+                    let itemSummary = { id: itId, name: it.name, type: it.type };
+                    if (it.type === 'single') { itemSummary.calcPrice = Number(it.price)||0; itemSummary.qty = 1; computedPrice += itemSummary.calcPrice; }
+                    else if (it.type === 'retail') {
+                        let q = parseInt(document.getElementById(`qty-${itId}`).value) || 1;
+                        itemSummary.qty = q; itemSummary.calcPrice = (Number(it.price)||0) * q; computedPrice += itemSummary.calcPrice;
+                    } else if (it.type === 'range') { 
+                        itemSummary.calcPrice = Number(it.min)||0; itemSummary.rangeMax = Number(it.max)||0; itemSummary.qty = 1; computedPrice += itemSummary.calcPrice; 
+                    } else if (it.type === 'custom') {
+                        let val = parseFloat(document.getElementById(`custom-val-${itId}`).value) || 0;
+                        itemSummary.customAssetVal = val; itemSummary.calcPrice = Math.round(val * 0.1); itemSummary.qty = 1; computedPrice += itemSummary.calcPrice;
+                    }
+                    selectedItems.push(itemSummary);
+                }
+            }
+            if (selectedItems.length === 0) { showToast("請至少勾選一項服務項目", "error"); return; }
+            
+            // 🛡️ 每日限購驗證阻擋機制 (隔日00:00刷新)
+            for (let i = 0; i < selectedItems.length; i++) {
+                let sIt = selectedItems[i];
+                let originalItem = null;
+                if (storeData[catId] && storeData[catId].items && storeData[catId].items[sIt.id]) {
+                    originalItem = storeData[catId].items[sIt.id];
+                }
+                if (originalItem && originalItem.dailyLimit && Number(originalItem.dailyLimit) > 0) {
+                    let limit = Number(originalItem.dailyLimit);
+                    let alreadyBought = getTodayPurchasedQty(userData.id, sIt.id);
+                    let orderQty = Number(sIt.qty) || 1;
+                    
+                    if (alreadyBought >= limit) {
+                        showToast(`⛔ 預定失敗！【${sIt.name}】每日限購 ${limit} 份。您今天已達上限，請明天 00:00 後再來購買。`, "error");
+                        return;
+                    } else if (alreadyBought + orderQty > limit) {
+                        let remain = limit - alreadyBought;
+                        showToast(`⛔ 預定數量超出限額！【${sIt.name}】每日限購 ${limit} 份。您今天還能購買 ${remain} 份，請將數量調整至 ${remain} 份以內。`, "error");
+                        return;
+                    }
+                }
+            }
+
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('submit-btn').innerText = '預定送出中...';
+            
+            const orderNo = await generateOrderNo();
+            
+            let detailsStrArray = selectedItems.map(i => {
+                let valStr = `$${(Number(i.calcPrice)||0).toLocaleString()}`;
+                if (i.type==='retail') valStr += ` (數量: ${i.qty})`;
+                if (i.type==='range') valStr += ` (最高至 $${(Number(i.rangeMax)||0).toLocaleString()})`;
+                if (i.type==='custom') valStr += ` (資產 $${(Number(i.customAssetVal)||0).toLocaleString()})`;
+                return `${i.name}  (${valStr})`;
+            });
+
+            let pPlate = document.getElementById('pPlate').value.trim() || '未填寫';
+            let pCarModel = document.getElementById('pCarModel').value.trim() || '未填寫';
+            let pRemarks = document.getElementById('pRemarks').value.trim() || '無';
+            
+            let newOrder = {
+                id: 'ORD-' + Date.now(),
+                orderNo: orderNo,
+                categoryName: cat.name,
+                categoryId: catId,
+                items: selectedItems,
+                details: detailsStrArray, 
+                totalPrice: computedPrice,
+                price: computedPrice, 
+                discordName: userData.global_name || userData.username || '未知客戶',
+                discordId: userData.id,
+                customerId: userData.id, 
+                customerName: userData.global_name || userData.username || '未知客戶', 
+                discordAvatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png',
+                plate: pPlate,
+                carModel: pCarModel,
+                remarks: pRemarks,
+                status: 'pending',
+                timestamp: Date.now(),
+                webhookUrl: cat.webhook || '',
+                messageId: ''
+            };
+
+            let embedPayload = {
+                title: `🆕 新預定單 #${orderNo}`,
+                color: 16751104,
+                fields: [
+                    { name: "👤 預定人", value: `<@${userData.id}>`, inline: true },
+                    { name: "💰 總金額", value: `**$${computedPrice.toLocaleString()}**`, inline: true },
+                    { name: "🚗 車輛資訊", value: `車牌: \`${pPlate}\`\n車款: \`${pCarModel}\`\n備註: ${pRemarks}`, inline: false },
+                    { name: "📋 服務明細", value: "```\n" + detailsStrArray.join("\n") + "\n```" },
+                    { name: "🔴 處理狀態", value: "待接訂單" },
+                    { name: "🛠️ 接單員工", value: "尚未接單", inline: true }
+                ],
+                footer: { text: "翔毅車業・預訂系統" },
+                timestamp: new Date().toISOString()
+            };
+            
+            newOrder.embedData = embedPayload;
+
+            if (newOrder.webhookUrl.trim() !== '') {
+                try {
+                    let urlParts = newOrder.webhookUrl.split('?');
+                    let fetchUrl = urlParts[0] + '?wait=true' + (urlParts.length > 1 ? '&' + urlParts[1] : '');
+                    
+                    let res = await fetch(fetchUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: "翔毅車業預定系統", embeds: [embedPayload] })
+                    });
+                    if (res.ok) {
+                        let msgData = await res.json();
+                        newOrder.messageId = msgData.id || '';
+                    }
+                } catch (we) { console.error("Webhook 送出異常:", we); }
+            }
+            
+            await db.ref('orders/' + newOrder.id).set(newOrder);
+            showToast(`🎉 預定成功！編號：${orderNo}`, "success");
+            setTimeout(() => { location.reload(); }, 1500);
+
+        } catch (error) {
+            console.error("預約送出崩潰: ", error);
+            showToast("系統發生錯誤，送出失敗", "error");
+            document.getElementById('submit-btn').disabled = false;
+            document.getElementById('submit-btn').innerText = '送出預定';
+        }
+    }
+
+    function showLogin(type) { 
+        try {
+            document.getElementById('player-view').style.display='none'; 
+            if(type==='boss') {
+                document.getElementById('login-view').style.display='block'; 
+                document.getElementById('emp-login-view').style.display='none';
+            } else {
+                document.getElementById('login-view').style.display='none'; 
+                document.getElementById('emp-login-view').style.display='block';
+            }
+        } catch(e){}
+    }
+    
+    function authAdmin() {
+        try {
+            let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
+            if (u === 'pomelo' && p === '0326') { 
+                currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
+                showToast("👑 老闆登入成功", "success"); 
+                refreshAllCalculations(); 
+                enterAdmin(); 
+            } else { 
+                showToast("帳號或密碼錯誤", "error"); 
+            }
+        } catch(e){}
+    }
+    
+    function authEmployee() {
+        try {
+            let u = document.getElementById('eUser').value.trim(), p = document.getElementById('ePass').value;
+            let found = false;
+            for(let id in empData) {
+                if(empData[id] && empData[id].username === u && empData[id].password === p) {
+                    found = true;
+                    currentLoggedUserType = 'emp';
+                    currentEmpId = id;
+                    
+                    if (empData[id].onDuty) {
+                        db.ref(`employees/${id}/onDuty`).set(false);
+                        empData[id].onDuty = false;
+                    }
+
+                    showToast(`🛠️ 歡迎回來，${empData[id].nickname}`, "success");
+                    refreshAllCalculations(); 
+                    enterAdmin();
+                    break;
+                }
+            }
+            if(!found) showToast("員工帳密錯誤或不存在", "error");
+        } catch(e){}
+    }
+
+    function enterAdmin() {
+        try {
+            document.getElementById('login-view').style.display = 'none';
+            document.getElementById('emp-login-view').style.display = 'none';
+            document.getElementById('admin-view').style.display = 'block';
+            if (currentLoggedUserType === 'boss') { document.getElementById('nav-boss').style.display = 'flex'; switchPage('manage'); }
+            else { document.getElementById('nav-emp').style.display = 'flex'; switchPage('emp-pending'); }
+        } catch(e){}
+    }
+
+    function switchPage(page) {
+        try {
+            document.querySelectorAll('[id^="admin-page-"]').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.admin-nav button').forEach(b => b.classList.remove('active'));
+            let targetPage = document.getElementById(`admin-page-${page}`);
+            if(targetPage) targetPage.style.display = 'block';
+            let targetBtn = document.getElementById(`nav-btn-${page}`);
+            if(targetBtn) targetBtn.classList.add('active');
+            
+            if (page === 'roles') loadRolePerms(); 
+        } catch(e){}
+    }
+
+    function handleLogout() {
+        try {
+            if (currentLoggedUserType === 'emp' && currentEmpId) {
+                let e = empData[currentEmpId];
+                if (e && e.onDuty) {
+                    showToast('⚠️ 尚未下班！系統正為您自動結算工時...', 'info');
+                    
+                    let now = Date.now();
+                    let dateStr = getWeekIdStr(now);
+                    let updates = {};
+                    updates[`employees/${currentEmpId}/onDuty`] = false;
+                    let lastIn = e.lastClockIn;
+                    if (lastIn) {
+                        let durationMins = Math.floor((now - lastIn) / 60000);
+                        let existingMins = (e.dutyLogs && e.dutyLogs[dateStr]) ? e.dutyLogs[dateStr].minutes : 0;
+                        updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+                    }
+                    
+                    db.ref().update(updates).then(() => {
+                        location.reload();
+                    });
+                    return; 
+                }
+            }
+            location.reload();
+        } catch(e) {
+            location.reload();
+        }
+    }
+
+    function toggleDuty(onDuty) {
+        try {
+            if (!currentEmpId || currentEmpId === 'boss') return;
+            
+            let now = Date.now();
+            let dateStr = getWeekIdStr(now); 
+            let updates = {};
+            
+            updates[`employees/${currentEmpId}/onDuty`] = onDuty;
+            
+            if (onDuty) {
+                updates[`employees/${currentEmpId}/lastClockIn`] = now;
+            } else {
+                let lastIn = empData[currentEmpId].lastClockIn;
+                if (lastIn) {
+                    let durationMins = Math.floor((now - lastIn) / 60000);
+                    let existingMins = (empData[currentEmpId].dutyLogs && empData[currentEmpId].dutyLogs[dateStr]) ? empData[currentEmpId].dutyLogs[dateStr].minutes : 0;
+                    updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+                }
+            }
+            
+            db.ref().update(updates).then(() => {
+                showToast(onDuty ? "🌞 已順利開始上班！" : "🌙 已順利打卡下班！", "success");
+                refreshAllCalculations();
+            });
+        } catch(e){}
+    }
+
+    function viewDutyLogs(empId) {
+        try {
+            let e = empData[empId];
+            if (!e) return;
+            
+            let html = `<div style="max-height: 250px; overflow-y: auto; text-align: left; margin-bottom: 10px;">`;
+            if (e.dutyLogs) {
+                let dates = Object.keys(e.dutyLogs).sort((a, b) => new Date(b) - new Date(a));
+                dates.forEach(d => {
+                    let mins = e.dutyLogs[d].minutes || 0;
+                    let hrs = Math.floor(mins / 60);
+                    let remainMins = mins % 60;
+                    html += `<div style="padding: 8px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between;">
+                        <span style="color: var(--text);">${d}</span>
+                        <span style="color: var(--accent); font-weight: bold;">${hrs} 小時 ${remainMins} 分鐘</span>
+                    </div>`;
+                });
+            } else {
+                html += `<p style="color:#aaa; text-align:center;">尚無任何打卡紀錄</p>`;
+            }
+            html += `</div>
+                     <p style="font-size:11px; color:#e74c3c; line-height: 1.4; font-weight:bold; margin-top:5px;">
+                        ⚠️ *備註：若打卡時間與伺服器內上下班紀錄時間差過大（或伺服器內無紀錄），則當天不納入全勤計算。
+                     </p>`;
+            
+            document.getElementById('modal-title').innerText = `🕒 ${e.nickname} 的打卡時數`;
+            document.getElementById('modal-item-name').innerText = "";
+            document.getElementById('modal-input-area').innerHTML = html;
+            document.getElementById('modal-confirm').onclick = closeModal;
+            document.getElementById('custom-modal').style.display = 'block'; 
+            document.getElementById('modal-overlay').style.display = 'block';
+        } catch(e){}
+    }
+
+    function renderCharts(dailyData, catData) {
+        try {
+            if (typeof Chart === 'undefined') return;
+            let tc = document.documentElement.getAttribute('data-theme') === 'light' ? '#333' : '#ccc';
+            Chart.defaults.color = tc;
+            
+            let ctxWeekly = document.getElementById('weeklyChart');
+            if(ctxWeekly) {
+                if (chartWeekly) chartWeekly.destroy();
+                let labels = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+                let data = labels.map(l => dailyData[l] || 0);
+                chartWeekly = new Chart(ctxWeekly, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '本週營業額 ($)',
+                            data: data,
+                            backgroundColor: 'rgba(255, 153, 0, 0.6)',
+                            borderColor: 'rgba(255, 153, 0, 1)',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: tc } }, x: { ticks: { color: tc } } }, plugins: { legend: { labels: { color: tc } } } }
+                });
+            }
+
+            let ctxCat = document.getElementById('categoryChart');
+            if(ctxCat) {
+                if (chartCategory) chartCategory.destroy();
+                let labels = Object.keys(catData);
+                let data = Object.values(catData);
+                chartCategory = new Chart(ctxCat, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: ['#5865F2', '#2ecc71', '#e74c3c', '#ff9900', '#9b59b6', '#1abc9c', '#34495e'],
+                            borderColor: 'transparent'
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: tc } } } }
+                });
+            }
+        } catch(err){}
+    }
+
+    function setPriceMode(mode) {
+        try {
+            currentMode = mode; document.querySelectorAll('.mode-toggle button').forEach(b => b.classList.remove('active'));
+            document.getElementById(`mode${mode.charAt(0).toUpperCase() + mode.slice(1)}`).classList.add('active');
+            document.getElementById('inputSingle').style.display = (mode==='single' || mode==='retail') ? 'block' : 'none';
+            document.getElementById('inputRetailExtra').style.display = (mode==='retail') ? 'block' : 'none';
+            document.getElementById('inputRange').style.display = (mode==='range') ? 'flex' : 'none';
+            document.getElementById('nItemPrice').placeholder = (mode==='retail') ? '單位單價' : '單價';
+        } catch(e){}
+    }
+
+    function openWebhookModal(catId) {
+        try {
+            let oldUrl = storeData[catId].webhook || '';
+            let area = document.getElementById('modal-input-area');
+            document.getElementById('modal-title').innerText = "Webhook 設定";
+            area.innerHTML = `<input type="text" id="webhook-url-input" value="${oldUrl}" placeholder="https://discord.com/api/webhooks/...">`;
+            document.getElementById('modal-confirm').onclick = () => {
+                db.ref(`xiangyi_shop/${catId}/webhook`).set(document.getElementById('webhook-url-input').value.trim()).then(() => { showToast("已更新！", "success"); closeModal(); });
+            };
+            document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
+        } catch(e){}
+    }
+
+    function addCat() {
+        try {
+            let name = document.getElementById('nCatName').value.trim(), web = document.getElementById('nCatWeb').value.trim();
+            if (!name) return; let id = 'CAT-' + Date.now();
+            db.ref('xiangyi_shop/' + id).set({ name: name, webhook: web, items: {} }).then(() => { showToast("分類建立成功", "success"); document.getElementById('nCatName').value=''; document.getElementById('nCatWeb').value=''; });
+        } catch(e){}
+    }
+
+    function deleteCategory(catId) { if (confirm("確定要整層刪除此分類及底下所有商品嗎？此動作不可逆！")) { db.ref('xiangyi_shop/' + catId).remove().then(() => showToast("分類已連同項目徹底刪除", "success")); } }
+
+    function addItem() {
+        try {
+            let catId = document.getElementById('aCatSelect').value; if (!catId) { alert("請選擇分類"); return; }
+            let name = document.getElementById('nItemName').value.trim(); if (!name) return;
+            let limitVal = Number(document.getElementById('nItemDailyLimit').value) || 0;
+            let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999, dailyLimit: limitVal };
+            
+            if (currentMode === 'single' || currentMode === 'retail') {
+                let p = Number(document.getElementById('nItemPrice').value) || 0; itemData.price = p;
+                if (currentMode === 'retail') { let m = document.getElementById('nItemMax').value; if (m) itemData.max = Number(m); }
+            } else if (currentMode === 'range') {
+                itemData.min = Number(document.getElementById('nPriceMin').value) || 0; itemData.max = Number(document.getElementById('nPriceMax').value) || 0;
+            }
+            db.ref(`xiangyi_shop/${catId}/items/${itemData.id}`).set(itemData).then(() => {
+                showToast("商品上架成功", "success"); document.getElementById('nItemName').value = '';
+                document.getElementById('nItemPrice').value = ''; document.getElementById('nItemMax').value = '';
+                document.getElementById('nPriceMin').value = ''; document.getElementById('nPriceMax').value = '';
+                document.getElementById('nItemDailyLimit').value = '';
+            });
+        } catch(e){}
+    }
+
+    function deleteItem(catId, itemId) { if(confirm("確定下架此項目嗎？")) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).remove().then(() => showToast("商品已下架", "success")); } }
+
+    function openEditModal(cid, iid) {
+        try {
+            let i = storeData[cid].items[iid], a = document.getElementById('modal-input-area');
+            if(!i) return;
+            document.getElementById('modal-title').innerText = "編輯項目";
+            let dlVal = i.dailyLimit || 0;
+            if (i.type === 'retail') {
+                a.innerHTML = `單價 <input type="number" id="ep" value="${i.price}"><br>上限 <input type="number" id="em" value="${i.max || ''}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ price: Number(document.getElementById('ep').value), max: document.getElementById('em').value ? Number(document.getElementById('em').value) : '', dailyLimit: Number(document.getElementById('edl').value) || 0 }); closeModal(); };
+            } else if (i.type === 'single') {
+                a.innerHTML = `售價 <input type="number" id="ep" value="${i.price}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ price: Number(document.getElementById('ep').value), dailyLimit: Number(document.getElementById('edl').value) || 0 }); closeModal(); };
+            } else if (i.type === 'range') {
+                a.innerHTML = `最低 <input type="number" id="emi" value="${i.min}"><br>最高 <input type="number" id="ema" value="${i.max}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ min: Number(document.getElementById('emi').value), max: Number(document.getElementById('ema').value), dailyLimit: Number(document.getElementById('edl').value) || 0 }); closeModal(); };
+            } else {
+                a.innerHTML = `每日限購 <input type="number" id="edl" value="${dlVal}">`;
+                document.getElementById('modal-confirm').onclick = () => { db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ dailyLimit: Number(document.getElementById('edl').value) || 0 }); closeModal(); };
+            }
+            document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
+        } catch(e){}
+    }
+
+    window.updateEmpRole = function(eid, newRole) {
+        try {
+            db.ref('employees/' + eid + '/role').set(newRole).then(() => {
+                showToast("職位已成功更新", "success");
+                refreshAllCalculations(); 
+            });
+        } catch(e){}
+    };
+
+    function refreshEmpUI() {
+        try {
+            let container = document.getElementById('admin-emp-list-container'); container.innerHTML = '';
+            if (Object.keys(empData).length === 0) { container.innerHTML = '<p style="color:#666; font-size:12px; text-align:center;">目前無現有員工</p>'; return; }
+            for (let id in empData) {
+                let e = empData[id];
+                if (!e) continue;
+                let roleOpts = ROLES_LIST.map(r => `<option value="${r}" ${r===e.role?'selected':''}>${r}</option>`).join('');
+                container.innerHTML += `
+                    <div class="emp-list-item">
+                        <div class="emp-list-info">
+                            <b style="color:var(--text);">${e.nickname}</b>
+                            <span style="font-size:11px; color:#aaa;">帳號: ${e.username}</span>
+                        </div>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <button onclick="viewDutyLogs('${id}')" style="background:#5865F2; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; cursor:pointer;">打卡時數</button>
+                            <select onchange="window.updateEmpRole('${id}', this.value)" style="margin:0; padding:6px; font-size:11px; width:auto;">
+                                ${roleOpts}
+                            </select>
+                            <button class="del-btn" onclick="deleteEmployee('${id}')">開除</button>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch(e){}
+    }
+
+    function addEmployee() {
+        try {
+            let u = document.getElementById('new-emp-user').value.trim(), p = document.getElementById('new-emp-pass').value, n = document.getElementById('new-emp-nick').value.trim(), r = document.getElementById('new-emp-role').value;
+            if(!u || !p || !n) { alert("所有欄位必填！"); return; }
+            let id = 'EMP-' + Date.now();
+            db.ref('employees/' + id).set({ username: u, password: p, nickname: n, role: r, onDuty: false }).then(() => {
+                showToast(`員工 ${n} 建檔完成`, "success"); document.getElementById('new-emp-user').value='';
+                document.getElementById('new-emp-pass').value=''; document.getElementById('new-emp-nick').value='';
+            });
+        } catch(e){}
+    }
+
+    function deleteEmployee(id) { if (confirm("確定要把該名員工開除並刪除帳號個資嗎？")) { db.ref('employees/' + id).remove().then(() => showToast("員工移除成功", "success")); } }
+
+    function loadRolePerms() {
+        try {
+            let r = document.getElementById('role-select').value;
+            if(!r) return;
+            let container = document.getElementById('role-perms-container');
+            container.innerHTML = '<p style="font-size:12px; color:#ff9900; margin:5px 0;">勾選允許接單之分類，並設定專屬分成：</p>';
+            let roleData = rolesData[r] || {};
+            
+            for (let cid in storeData) {
+                let p = roleData[cid] || { canAccept: false, pct: 70 };
+                let checked = p.canAccept ? 'checked' : '';
+                container.innerHTML += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--row-bg); padding:10px; border-radius:8px; margin-bottom:8px; border:1px solid var(--border-color);">
+                        <span style="font-size:13px; font-weight:bold; width:35%; color:var(--text);">${storeData[cid].name}</span>
+                        <label style="display:flex; align-items:center; gap:5px; margin:0; font-size:12px; cursor:pointer;">
+                            <input type="checkbox" id="perm-cb-${cid}" ${checked} style="margin:0;width:auto;">允許接單
+                        </label>
+                        <div style="display:flex; align-items:center; gap:5px; width:25%;">
+                            <input type="number" id="perm-pct-${cid}" value="${p.pct}" style="margin:0;padding:5px;height:28px;" placeholder="%">
+                            <span style="font-size:12px;color:#aaa">%</span>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch(e){}
+    }
+
+    function saveRolePerms() {
+        try {
+            let r = document.getElementById('role-select').value, p = {};
+            for(let cid in storeData) {
+                let cb = document.getElementById(`perm-cb-${cid}`);
+                let pct = document.getElementById(`perm-pct-${cid}`);
+                if(cb) p[cid] = { canAccept: cb.checked, pct: parseInt(pct.value)||0 };
+            }
+            db.ref(`roles/${r}`).set(p).then(()=> {
+                showToast(`職位 [${r}] 權限儲存成功`, "success");
+                refreshAllCalculations(); 
+            });
+        } catch(e){}
+    }
+
     function refreshAllCalculations() {
         try {
             let weekStart = getWeekStartTimestamp();
@@ -789,7 +1484,6 @@
                 try {
                     let t = o.timestamp || 0;
 
-                    // 👤 顧客進度面板安全渲染
                     if (userData && o.customerId === userData.id && now - t <= RETAIN_TIME_MS) {
                         let cBadge = '';
                         if (o.status === 'pending') cBadge = '<span style="color:#e74c3c; font-weight:bold;">🔴 排隊中</span>';
@@ -811,7 +1505,6 @@
                         `;
                     }
 
-                    // == 1. 待接單與處理中渲染 ==
                     if (o.status === 'pending') {
                         if (currentLoggedUserType === 'emp') {
                             let eRole = null;
@@ -876,7 +1569,6 @@
                         `;
                     }
                     
-                    // == 2. 發薪、營收結算 ==
                     if (o.status === 'completed' || o.status === 'accepted') {
                         let priceToUse = Number(o.totalPrice || o.price || 0);
                         let orderWeekStart = getWeekStartTimestampByTime(t);
@@ -938,7 +1630,6 @@
                         }
                     }
                     
-                    // == 3. 歷史大廳 ==
                     if (now - t <= RETAIN_TIME_MS) {
                         let badge = '';
                         let mName = o.mechanicName || '未知技師';
@@ -985,7 +1676,7 @@
                         `;
                     }
                 } catch (error) {
-                    console.error("渲染單筆訂單發生錯誤, 已自動跳過防崩潰: ", o.id, error);
+                    console.error("渲染單筆訂單出錯: ", error);
                 }
             });
             
@@ -1076,227 +1767,62 @@
 
             renderCharts(globalDailyData, globalCatData);
         } catch(err) {
-            console.error("全域工時與分成安全計算執行緒異常(已阻斷防崩潰): ", err);
+            console.error("財務與時數累計核心失敗: ", err);
         }
     }
 
-    // --- 安全登出，登出時自動結算工時 ---
-    function handleLogout() {
+    async function manualSettleSalary(weekId, empId) {
         try {
-            if (currentLoggedUserType === 'emp' && currentEmpId) {
-                let e = empData[currentEmpId];
-                if (e && e.onDuty) {
-                    showToast('⚠️ 尚未下班！系統正為您自動結算工時...', 'info');
-                    
-                    let now = Date.now();
-                    let dateStr = getWeekIdStr(now);
-                    let updates = {};
-                    updates[`employees/${currentEmpId}/onDuty`] = false;
-                    let lastIn = e.lastClockIn;
-                    if (lastIn) {
-                        let durationMins = Math.floor((now - lastIn) / 60000);
-                        let existingMins = (e.dutyLogs && e.dutyLogs[dateStr]) ? e.dutyLogs[dateStr].minutes : 0;
-                        updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
+            if (!confirm(`確定要結算此員工薪資，並將薪水從公款餘額中扣除嗎？`)) return;
+            
+            let totalSalary = 0; let updates = {};
+            Object.entries(ordersData || {}).forEach(([id, o]) => {
+                let t = o.timestamp || 0; let oWeekId = getWeekIdStr(getWeekStartTimestampByTime(t));
+                let oEmpId = o.mechanicId || o.acceptedBy;
+                if (oWeekId === weekId && oEmpId === empId && (o.status === 'completed' || o.status === 'accepted') && !o.isPaid) {
+                    let commAmount = o.commission || 0;
+                    if (!commAmount) {
+                        let pToUse = Number(o.totalPrice || o.price || 0);
+                        if (o.isRoadside) commAmount = Math.round(pToUse * 0.9);
+                        else { let rate = o.settledRate !== undefined ? o.settledRate : 70; commAmount = Math.round(pToUse * (rate / 100)); }
                     }
-                    
-                    db.ref().update(updates).then(() => {
-                        location.reload();
-                    });
-                    return; 
+                    totalSalary += commAmount;
+                    updates[`orders/${id}/isPaid`] = true;
                 }
-            }
-            location.reload();
-        } catch(e) {
-            location.reload();
-        }
-    }
-
-    // 老闆驗證登入
-    function authAdmin() {
-        try {
-            let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
-            if (u === 'pomelo' && p === '0326') { 
-                currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
-                showToast("👑 老闆登入成功", "success"); 
-                refreshAllCalculations(); 
-                enterAdmin(); 
-            } else { 
-                showToast("帳號或密碼錯誤", "error"); 
-            }
-        } catch(e) {
-            console.error("老闆登入出錯:", e);
-        }
-    }
-    
-    // 員工驗證登入 (安全工時重置)
-    function authEmployee() {
-        try {
-            let u = document.getElementById('eUser').value.trim(), p = document.getElementById('ePass').value;
-            let found = false;
-            for(let id in empData) {
-                if(empData[id] && empData[id].username === u && empData[id].password === p) {
-                    found = true;
-                    currentLoggedUserType = 'emp';
-                    currentEmpId = id;
-                    
-                    // 防呆：登入時預設必須為下班
-                    if (empData[id].onDuty) {
-                        db.ref(`employees/${id}/onDuty`).set(false);
-                        empData[id].onDuty = false;
-                    }
-
-                    showToast(`🛠| 歡迎回來，${empData[id].nickname}`, "success");
-                    refreshAllCalculations(); 
-                    enterAdmin();
-                    break;
-                }
-            }
-            if(!found) showToast("員工帳密錯誤或不存在", "error");
-        } catch(e) {
-            console.error("員工登入出錯:", e);
-        }
-    }
-
-    // 項目圖表安全渲染 (100%防空防禦)
-    function renderCharts(dailyData, catData) {
-        try {
-            if (typeof Chart === 'undefined') {
-                console.warn("Chart.js 庫尚未下載完畢，跳過圖表初始化。");
-                return;
-            }
-            let tc = document.documentElement.getAttribute('data-theme') === 'light' ? '#333' : '#ccc';
-            Chart.defaults.color = tc;
-            
-            let ctxWeekly = document.getElementById('weeklyChart');
-            if(ctxWeekly) {
-                if (chartWeekly) chartWeekly.destroy();
-                let labels = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-                let data = labels.map(l => dailyData[l] || 0);
-                chartWeekly = new Chart(ctxWeekly, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: '本週營業額 ($)',
-                            data: data,
-                            backgroundColor: 'rgba(255, 153, 0, 0.6)',
-                            borderColor: 'rgba(255, 153, 0, 1)',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        }]
-                    },
-                    options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: tc } }, x: { ticks: { color: tc } } }, plugins: { legend: { labels: { color: tc } } } }
-                });
-            }
-
-            let ctxCat = document.getElementById('categoryChart');
-            if(ctxCat) {
-                if (chartCategory) chartCategory.destroy();
-                let labels = Object.keys(catData);
-                let data = Object.values(catData);
-                chartCategory = new Chart(ctxCat, {
-                    type: 'doughnut',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            data: data,
-                            backgroundColor: ['#5865F2', '#2ecc71', '#e74c3c', '#ff9900', '#9b59b6', '#1abc9c', '#34495e'],
-                            borderColor: 'transparent'
-                        }]
-                    },
-                    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: tc } } } }
-                });
-            }
-        } catch(err) {
-            console.error("圖表引擎安全機制捕捉到非預期警告（已自動排除）: ", err);
-        }
-    }
-
-    // 項目管理、類別新增
-    function addCat() {
-        try {
-            let name = document.getElementById('nCatName').value.trim(), web = document.getElementById('nCatWeb').value.trim();
-            if (!name) return; let id = 'CAT-' + Date.now();
-            db.ref('xiangyi_shop/' + id).set({ name: name, webhook: web, items: {} }).then(() => { showToast("分類建立成功", "success"); document.getElementById('nCatName').value=''; document.getElementById('nCatWeb').value=''; });
-        } catch(e){}
-    }
-
-    function deleteCategory(catId) { if (confirm("確定要整層刪除此分類及底下所有商品嗎？此動作不可逆！")) { db.ref('xiangyi_shop/' + catId).remove().then(() => showToast("分類已連同項目徹底刪除", "success")); } }
-
-    function addItem() {
-        try {
-            let catId = document.getElementById('aCatSelect').value; if (!catId) { alert("請選擇分類"); return; }
-            let name = document.getElementById('nItemName').value.trim(); if (!name) return;
-            let limitVal = Number(document.getElementById('nItemDailyLimit').value) || 0;
-            
-            let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999, dailyLimit: limitVal };
-            
-            if (currentMode === 'single' || currentMode === 'retail') {
-                let p = Number(document.getElementById('nItemPrice').value) || 0; itemData.price = p;
-                if (currentMode === 'retail') { let m = document.getElementById('nItemMax').value; if (m) itemData.max = Number(m); }
-            } else if (currentMode === 'range') {
-                itemData.min = Number(document.getElementById('nPriceMin').value) || 0; itemData.max = Number(document.getElementById('nPriceMax').value) || 0;
-            }
-            db.ref(`xiangyi_shop/${catId}/items/${itemData.id}`).set(itemData).then(() => {
-                showToast("商品上架成功", "success"); document.getElementById('nItemName').value = '';
-                document.getElementById('nItemPrice').value = ''; document.getElementById('nItemMax').value = '';
-                document.getElementById('nPriceMin').value = ''; document.getElementById('nPriceMax').value = '';
-                document.getElementById('nItemDailyLimit').value = '';
             });
+
+            if (totalSalary > 0) {
+                let currentBalance = Number(fundsData.balance || 0);
+                updates[`funds/balance`] = currentBalance - totalSalary;
+                updates[`paid_weeks/${weekId}/${empId}`] = { paid: true, salary: totalSalary, settledAt: Date.now() };
+                await db.ref().update(updates);
+                showToast("結算成功！薪水已從公款扣除。", "success");
+            } else showToast("無待結算項目", "info");
         } catch(e){}
     }
 
-    function deleteItem(catId, itemId) { if(confirm("確定下架此項目嗎？")) { db.ref(`xiangyi_shop/${catId}/items/${itemId}`).remove().then(() => showToast("商品已下架", "success")); } }
-
-    function openEditModal(cid, iid) {
+    async function cancelPaySingleEmployee(weekId, empId) {
         try {
-            let i = storeData[cid].items[iid], a = document.getElementById('modal-input-area');
-            if (!i) return;
-            document.getElementById('modal-title').innerText = "編輯項目";
-            let dlVal = i.dailyLimit || 0;
-            if (i.type === 'retail') {
-                a.innerHTML = `單價 <input type="number" id="ep" value="${i.price}"><br>上限 <input type="number" id="em" value="${i.max || ''}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
-                document.getElementById('modal-confirm').onclick = () => { 
-                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
-                        price: Number(document.getElementById('ep').value), 
-                        max: document.getElementById('em').value ? Number(document.getElementById('em').value) : '',
-                        dailyLimit: Number(document.getElementById('edl').value) || 0
-                    }); 
-                    closeModal(); 
-                };
-            } else if (i.type === 'single') {
-                a.innerHTML = `售價 <input type="number" id="ep" value="${i.price}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
-                document.getElementById('modal-confirm').onclick = () => { 
-                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
-                        price: Number(document.getElementById('ep').value),
-                        dailyLimit: Number(document.getElementById('edl').value) || 0
-                    }); 
-                    closeModal(); 
-                };
-            } else if (i.type === 'range') {
-                a.innerHTML = `最低 <input type="number" id="emi" value="${i.min}"><br>最高 <input type="number" id="ema" value="${i.max}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
-                document.getElementById('modal-confirm').onclick = () => { 
-                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
-                        min: Number(document.getElementById('emi').value), 
-                        max: Number(document.getElementById('ema').value),
-                        dailyLimit: Number(document.getElementById('edl').value) || 0
-                    }); 
-                    closeModal(); 
-                };
-            } else {
-                a.innerHTML = `每日限購 <input type="number" id="edl" value="${dlVal}">`;
-                document.getElementById('modal-confirm').onclick = () => { 
-                    db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({
-                        dailyLimit: Number(document.getElementById('edl').value) || 0
-                    }); 
-                    closeModal(); 
-                };
-            }
-            document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
+            if (!confirm(`確定要取消此結清紀錄？已發放的薪水將退回公款。`)) return;
+            let paidRecord = paidWeeksData[weekId] && paidWeeksData[weekId][empId];
+            if (!paidRecord) return showToast("找不到結清紀錄", "error");
+
+            let totalSalary = Number(paidRecord.salary || 0); let updates = {};
+            Object.entries(ordersData || {}).forEach(([id, o]) => {
+                let t = o.timestamp || 0; let oWeekId = getWeekIdStr(getWeekStartTimestampByTime(t));
+                let oEmpId = o.mechanicId || o.acceptedBy;
+                if (oWeekId === weekId && oEmpId === empId && o.isPaid) updates[`orders/${id}/isPaid`] = null;
+            });
+
+            let currentBalance = Number(fundsData.balance || 0);
+            updates[`funds/balance`] = currentBalance + totalSalary;
+            updates[`paid_weeks/${weekId}/${empId}`] = null;
+            await db.ref().update(updates);
+            showToast("取消結算成功！薪水已退回公款。", "warning");
         } catch(e){}
     }
 
-    // 技師刪減訂單內單一品項 (高精度安全修復版)
+    // 技師刪減訂單內單一品項 (高精度安全修復版：徹底解決千分位逗號解析錯誤)
     function deleteOrderSubItem(orderId, itemIndex) {
         try {
             let o = ordersData[orderId];
@@ -1305,9 +1831,11 @@
 
             showCustomConfirm("刪減此服務細項？", "確定要移除？金額與分成將連動重算。", async () => {
                 let subtractedPrice = 0;
+                // 優先從結構化的 items 陣列中抓取精確金額，避免字串解析錯誤
                 if (o.items && o.items[itemIndex] && typeof o.items[itemIndex].calcPrice !== 'undefined') {
                     subtractedPrice = Number(o.items[itemIndex].calcPrice) || 0;
                 } else {
+                    // 備用方案：從字串中萃取 (修復千分位逗號導致只扣部分金額的問題)
                     let itemStr = o.details[itemIndex];
                     let priceMatch = itemStr.match(/\$([\d,]+)/);
                     if (priceMatch && priceMatch[1]) { 
@@ -1340,19 +1868,22 @@
 
                 let updates = {};
                 updates[`orders/${orderId}/details`] = newDetails;
-                if (o.items) updates[`orders/${orderId}/items`] = newItems; 
+                if (o.items) updates[`orders/${orderId}/items`] = newItems; // 同步更新 items 陣列
                 updates[`orders/${orderId}/totalPrice`] = newPrice;
                 updates[`orders/${orderId}/price`] = newPrice;
                 updates[`orders/${orderId}/commission`] = newCommission;
 
+                // 修復：已完工訂單刪減細項時，同步正確扣除公款
                 if (o.status === 'completed') {
                     let currentBalance = Number(fundsData.balance || 0);
                     let fundDeduction = 0;
                     if (o.isPaid) {
+                        // 已結算薪資：老闆當初只拿了利潤(總額-分成)，退款也是退差額的利潤
                         let oldNet = oldPrice - oldCommission;
                         let newNet = newPrice - newCommission;
                         fundDeduction = oldNet - newNet;
                     } else {
+                        // 未結算薪資：全額都在公款庫中，直接扣除減少的總價
                         fundDeduction = subtractedPrice;
                     }
                     updates[`funds/balance`] = currentBalance - fundDeduction;
@@ -1366,7 +1897,6 @@
         }
     }
 
-    // 技師接單
     function takeOrder(id) {
         try {
             let e = empData[currentEmpId]; let o = ordersData[id];
@@ -1402,57 +1932,141 @@
         } catch(err) {}
     }
 
-    function addEmployee() {
+    function openEmpActiveModal(id) {
         try {
-            let u = document.getElementById('new-emp-user').value.trim(), p = document.getElementById('new-emp-pass').value, n = document.getElementById('new-emp-nick').value.trim(), r = document.getElementById('new-emp-role').value;
-            if(!u || !p || !n) { alert("所有欄位必填！"); return; }
-            let id = 'EMP-' + Date.now();
-            db.ref('employees/' + id).set({ username: u, password: p, nickname: n, role: r, onDuty: false }).then(() => {
-                showToast(`員工 ${n} 建檔完成`, "success"); document.getElementById('new-emp-user').value='';
-                document.getElementById('new-emp-pass').value=''; document.getElementById('new-emp-nick').value='';
+            let o = ordersData[id], area = document.getElementById('modal-input-area');
+            document.getElementById('modal-title').innerText = "👨‍💻 訂單施工回報大廳";
+            let displayItems = '';
+            if(o.details) displayItems = o.details.join(', ');
+            else if(o.items) {
+                let nArr = []; for(let i=0; i<o.items.length; i++) nArr.push(o.items[i].name); displayItems = nArr.join(', ');
+            }
+            document.getElementById('modal-item-name').innerText = `客戶: ${o.customerName || o.discordName}\n項目: ${displayItems}`;
+            area.innerHTML = `<p style="color:#2ecc71; text-align:center; font-weight:bold; font-size:16px;">💰 應收固定總價: $${Number(o.totalPrice || o.price || 0).toLocaleString()}</p>`;
+            
+            document.getElementById('modal-confirm').onclick = () => {
+                let finalPrice = Number(o.totalPrice || o.price || 0);
+                db.ref('orders/' + id).update({ status: 'completed', totalPrice: finalPrice, price: finalPrice, timestamp: Date.now() }).then(() => {
+                    let currentBalance = Number(fundsData.balance || 0);
+                    db.ref('funds/balance').set(currentBalance + finalPrice).then(() => {
+                        showToast("🎉 完工回報成功！公款已即時入庫。", "success");
+                        let latestOrder = ordersData[id] || o;
+                        let mName = latestOrder.mechanicName || (empData[currentEmpId] ? empData[currentEmpId].nickname : "未知");
+                        updateDiscordWebhook(latestOrder, "✅ 訂單已完成", 3066993, mName);
+                        closeModal();
+                    });
+                });
+            };
+            document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
+        } catch(e){}
+    }
+
+    async function abandonOrder(id) {
+        try {
+            let order = ordersData[id]; if (!order) return;
+            showCustomConfirm("確定要放棄此訂單？", "放棄後訂單將重新回到待接清單中。", async () => {
+                try {
+                    await updateDiscordWebhook(order, "待接訂單", 16751104, "尚未接單");
+                    await db.ref(`orders/${id}`).update({ status: 'pending', acceptedBy: null, mechanicId: null, mechanicName: null, commission: null, acceptedAt: null });
+                    showToast("✅ 已放棄此訂單！", "success");
+                } catch (e) { showToast("放棄操作失敗！", "error"); }
             });
         } catch(e){}
     }
 
-    // 員工帳號與分成設定
-    function loadRolePerms() {
+    async function cancelOrder(id) {
         try {
-            let r = document.getElementById('role-select').value;
-            if(!r) return;
-            let container = document.getElementById('role-perms-container');
-            container.innerHTML = '<p style="font-size:12px; color:#ff9900; margin:5px 0;">勾選允許接單之分類，並設定專屬分成：</p>';
-            let roleData = rolesData[r] || {};
+            let order = ordersData[id]; if (!order) return;
+            if (order.status === 'completed' || order.status === 'accepted') return showToast("已完工訂單請用「強制剔除」功能！", "error");
             
-            for (let cid in storeData) {
-                let p = roleData[cid] || { canAccept: false, pct: 70 };
-                let checked = p.canAccept ? 'checked' : '';
-                container.innerHTML += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--row-bg); padding:10px; border-radius:8px; margin-bottom:8px; border:1px solid var(--border-color);">
-                        <span style="font-size:13px; font-weight:bold; width:35%; color:var(--text);">${storeData[cid].name}</span>
-                        <label style="display:flex; align-items:center; gap:5px; margin:0; font-size:12px; cursor:pointer;">
-                            <input type="checkbox" id="perm-cb-${cid}" ${checked} style="margin:0;width:auto;">允許接單
-                        </label>
-                        <div style="display:flex; align-items:center; gap:5px; width:25%;">
-                            <input type="number" id="perm-pct-${cid}" value="${p.pct}" style="margin:0;padding:5px;height:28px;" placeholder="%">
-                            <span style="font-size:12px;color:#aaa">%</span>
-                        </div>
-                    </div>
-                `;
+            showCustomConfirm("取消此訂單？", "此操作會將訂單從清單永久移除。", async () => {
+                try {
+                    await updateDiscordWebhook(order, "❌ 訂單已取消", 15548997, "無");
+                    await db.ref(`orders/${id}`).remove();
+                    showToast("訂單已順利取消", "success");
+                } catch (e) { showToast("取消失敗", "error"); }
+            });
+        } catch(e){}
+    }
+
+    function submitRoadside() {
+        try {
+            let planVal = Number(document.getElementById('rs-plan').value);
+            let danger = document.getElementById('rs-danger').checked;
+            let total = planVal + (danger ? 150000 : 0);
+            
+            let e = empData[currentEmpId];
+            let newRoadsideOrder = {
+                id: 'RS-' + Date.now(), orderNo: 'RS' + Date.now().toString().slice(-6), categoryName: '🚨 道路救援', categoryId: 'roadside',
+                items: [{ name: document.getElementById('rs-plan').options[document.getElementById('rs-plan').selectedIndex].text + (danger ? ' [紅圈危險區]' : ''), calcPrice: total, type: 'single' }],
+                details: [document.getElementById('rs-plan').options[document.getElementById('rs-plan').selectedIndex].text + (danger ? ' [紅圈危險區]' : '')],
+                totalPrice: total, price: total, discordName: '道路突發回報', customerName: '現場突發客戶', discordId: '0',
+                status: 'completed', timestamp: Date.now(), isRoadside: true, mechanicId: currentEmpId, acceptedBy: currentEmpId, mechanicName: e.nickname, commission: Math.round(total * 0.9)
+            };
+            db.ref('orders/' + newRoadsideOrder.id).set(newRoadsideOrder).then(() => {
+                let curBal = Number(fundsData.balance || 0);
+                db.ref('funds/balance').set(curBal + total).then(() => {
+                    showToast("🚨 道路救援已完工存檔，款項已入公款庫！", "success");
+                    document.getElementById('rs-danger').checked = false;
+                });
+            });
+        } catch(e){}
+    }
+
+    function deleteCompletedOrder(orderId) {
+        try {
+            if (!confirm("⚠️ 警告：刪除已完工之訂單將會實時倒扣公款營收！\n確定要強制剔除此訂單嗎？")) return;
+            let o = ordersData[orderId];
+            let priceToUse = Number(o.totalPrice || o.price || 0);
+            let commAmount = o.commission || 0;
+            if (!commAmount) {
+                if (o.isRoadside) commAmount = Math.round(priceToUse * 0.9);
+                else commAmount = Math.round(priceToUse * ((o.settledRate || 70) / 100));
+            }
+            
+            let deduction = o.isPaid ? (priceToUse - commAmount) : priceToUse;
+            let currentBalance = Number(fundsData.balance || 0);
+            db.ref('funds/balance').set(currentBalance - deduction).then(() => {
+                db.ref('orders/' + orderId).remove().then(() => { 
+                    showToast("訂單已強制剔除，公款盈餘已倒扣校正完畢。", "success"); 
+                    updateDiscordWebhook(o, "❌ 訂單遭強制剔除", 15548997, "無");
+                });
+            });
+        } catch(e){}
+    }
+
+    function refreshFinanceUI() {
+        try {
+            if (document.getElementById('finance-balance')) document.getElementById('finance-balance').innerText = '$' + Number(fundsData.balance || 0).toLocaleString();
+            let eList = document.getElementById('expense-list'); 
+            if (eList) {
+                eList.innerHTML = '';
+                let sortedExp = Object.entries(expensesData || {}).sort((a,b) => b[1].timestamp - a[1].timestamp);
+                sortedExp.forEach(([id, ex]) => {
+                    let tStr = new Date(ex.timestamp).toLocaleDateString();
+                    eList.innerHTML += `<div style="color:#ff8888; margin-bottom:3px;">[${tStr}] ${ex.reason} : -$${Number(ex.amount||0).toLocaleString()}</div>`;
+                });
             }
         } catch(e){}
     }
 
-    function saveRolePerms() {
+    function editBalance() {
         try {
-            let r = document.getElementById('role-select').value, p = {};
-            for(let cid in storeData) {
-                let cb = document.getElementById(`perm-cb-${cid}`);
-                let pct = document.getElementById(`perm-pct-${cid}`);
-                if(cb) p[cid] = { canAccept: cb.checked, pct: parseInt(pct.value)||0 };
-            }
-            db.ref(`roles/${r}`).set(p).then(()=> {
-                showToast(`職位 [${r}] 權限儲存成功`, "success");
-                refreshAllCalculations(); 
+            let nv = prompt("請輸入修正後的精確公款數值:", fundsData.balance || 0);
+            if (nv !== null && !isNaN(Number(nv))) { db.ref('funds/balance').set(Number(nv)).then(() => showToast("公款帳目數值更正完成", "success")); }
+        } catch(e){}
+    }
+
+    function addExpense() {
+        try {
+            let r = document.getElementById('expense-reason').value.trim(), a = Number(document.getElementById('expense-amount').value) || 0;
+            if (!r || a <= 0) return; let id = 'EXP-' + Date.now();
+            db.ref('expenses/' + id).set({ reason: r, amount: a, timestamp: Date.now() }).then(() => {
+                let cur = Number(fundsData.balance || 0);
+                db.ref('funds/balance').set(cur - a).then(() => {
+                    showToast("支出登記完畢並已於公款中扣除", "success");
+                    document.getElementById('expense-reason').value = ''; document.getElementById('expense-amount').value = '';
+                });
             });
         } catch(e){}
     }
