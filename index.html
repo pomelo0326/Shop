@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>翔毅車業預定系統 v7.2</title>
+    <title>翔毅車業預定系統 v7.2 (終極整合版)</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -118,7 +118,6 @@
 </head>
 <body>
 
-<!-- 新增：提示音效標籤 (請確保檔案與此 HTML 處於同一層級) -->
 <audio id="audio-new-order" src="./進單鈴聲.mp3" preload="auto"></audio>
 <audio id="audio-accept-order" src="./接受訂單鈴聲.mp3" preload="auto"></audio>
 
@@ -141,7 +140,6 @@
         <button class="theme-btn" onclick="toggleTheme()">🌓 切換主題</button>
     </div>
 
-    <!-- 前台預定介面 -->
     <div id="player-view">
         <button id="login-btn" class="dc-btn" onclick="loginDiscord()">連結 Discord 帳號驗證</button>
         
@@ -161,7 +159,7 @@
             <p style="color:#666; font-size:12px; text-align:center; padding:10px;">請先選擇類別</p>
         </div>
 
-        <!-- 🚗 顧客體驗升級：車輛/財產資訊欄 -->
+        <!-- 🚗 顧客體驗升級：車輛資訊欄 -->
         <div id="car-info-group" style="margin-top: 15px; display: none;">
             <label>🚗 車輛/財產資訊與備註</label>
             <div style="display: flex; gap: 8px;">
@@ -179,7 +177,7 @@
         
         <button class="btn-send" id="submit-btn" onclick="sendOrder()">送出預定</button>
 
-        <!-- 📋 新增：顧客專屬進度追蹤區塊 -->
+        <!-- 📋 顧客專屬進度追蹤區塊 -->
         <div id="customer-progress-section" class="customer-progress-box">
             <h3 style="margin:0 0 5px 0; color:var(--accent); font-size:15px;">📋 我的訂單進度 (72H內)</h3>
             <p style="font-size:11px; color:#aaa; margin:0 0 10px 0;">即時追蹤您的車輛施工狀態</p>
@@ -195,8 +193,8 @@
     <!-- 老闆登入 -->
     <div id="login-view" style="display:none;">
         <h3>👑 老闆後台登入</h3>
-        <input type="text" id="aUser" placeholder="老闆帳號 ()">
-        <input type="password" id="aPass" placeholder="老闆密碼 ()">
+        <input type="text" id="aUser" placeholder="老闆帳號 (pomelo)">
+        <input type="password" id="aPass" placeholder="老闆密碼 (0326)">
         <button onclick="authAdmin()" style="background:var(--accent); color:white; font-weight:bold;">登入</button>
         <button style="background:var(--row-bg); color:var(--text); border:1px solid var(--border-color);" onclick="location.reload()">返回</button>
     </div>
@@ -248,7 +246,11 @@
                     <button id="modeRange" onclick="setPriceMode('range')">範圍</button>
                     <button id="modeCustom" onclick="setPriceMode('custom')">自填10%</button>
                 </div>
-                <div id="inputSingle"><input type="number" id="nItemPrice" placeholder="單價"></div>
+                <div id="inputSingle">
+                    <input type="number" id="nItemPrice" placeholder="單價">
+                </div>
+                <!-- 新增：每日限購設定欄位 -->
+                <input type="number" id="nItemDailyLimit" placeholder="每日限購數量 (0 或留空代表無限購)" style="margin-top: 5px;">
                 <div id="inputRetailExtra" style="display:none;"><input type="number" id="nItemMax" placeholder="數量上限 (可留空)"></div>
                 <div id="inputRange" style="display:none; display:flex; gap:5px;"><input type="number" id="nPriceMin" placeholder="最低">~<input type="number" id="nPriceMax" placeholder="最高"></div>
                 <button onclick="addItem()" style="margin-top:10px">確認上架</button>
@@ -360,7 +362,7 @@
 
         <!-- EMP 1. 員工 - 待接取訂單與打卡 -->
         <div id="admin-page-emp-pending" style="display:none;">
-            <!-- ⏰ 新增：打卡上班系統 -->
+            <!-- ⏰ 打卡上班系統 -->
             <div class="cat-card" style="border-color: var(--accent);">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 10px; margin-bottom: 10px;">
                     <h4 style="margin:0; color:var(--accent);">⏰ 技師打卡上班系統</h4>
@@ -401,12 +403,12 @@
                 <h4 style="color:#e74c3c; margin-top:0;">🚨 道路救援即時回報</h4>
                 <label>選擇出勤方案</label>
                 <select id="rs-plan">
-                    <option value="30000">親自到店維修 ($100,000)</option>
+                    <option value="100000">親自到店維修 ($100,000)</option>
                     <option value="150000">市區區域救援 ($150,000)</option>
-                    <option value="200000">中部區域救援 ($200,000)</option>
-                    <option value="250000">北部區域救援 ($250,000)</option>
-                    <option value="500000">深山區域救援 ($500,000)</option>
-                    <option value="600000">非本島區域救援 ($600,000)</option>
+                    <option value="250000">中部區域救援 ($250,000)</option>
+                    <option value="350000">北部區域救援 ($350,000)</option>
+                    <option value="450000">深山區域救援 ($450,000)</option>
+                    <option value="650000">非本島區域救援 ($650,000)</option>
                 </select>
                 <label style="display:flex; align-items:center; gap:8px; margin-top:15px; cursor:pointer;">
                     <input type="checkbox" id="rs-danger" style="width:auto; margin:0;"> 
@@ -425,7 +427,6 @@
 </div>
 
 <script>
-    // === 🛠️ 優先宣告時間與週別 Helper 函式 ===
     function getWeekStartTimestamp() {
         let now = new Date(), currentDay = now.getDay();
         let diffToSaturday = currentDay === 6 ? 0 : (currentDay + 1);
@@ -446,7 +447,13 @@
         return y + '-' + m + '-' + day;
     }
 
-    // === 主題切換 ===
+    // 取得今天 00:00:00 的時間戳
+    function getTodayStartTimestamp() {
+        let d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d.getTime();
+    }
+
     function toggleTheme() {
         let html = document.documentElement;
         let currentTheme = html.getAttribute("data-theme");
@@ -492,7 +499,6 @@
                     let existingMins = (emp.dutyLogs && emp.dutyLogs[dateStr]) ? emp.dutyLogs[dateStr].minutes : 0;
                     updates[`employees/${currentEmpId}/dutyLogs/${dateStr}/minutes`] = existingMins + durationMins;
                 }
-                // 使用 Firebase 進行背景強制更新
                 db.ref().update(updates);
             }
         }
@@ -532,50 +538,6 @@
     let chartCategory = null;
     let globalDailyData = {};
     let globalCatData = {};
-
-    async function generateOrderNo() {
-        const today = new Date();
-        const dateStr = `${today.getFullYear()}${(today.getMonth() + 1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
-        const countRef = db.ref(`order_counts/${dateStr}`);
-        let count = 1;
-        const snapshot = await countRef.once('value');
-        if (snapshot.exists()) { count = snapshot.val() + 1; }
-        await countRef.set(count);
-        return `${dateStr}${count.toString().padStart(4, '0')}`;
-    }
-
-    function showToast(msg, type = 'info') {
-        const container = document.getElementById('toast-container');
-        const toast = document.createElement('div');
-        toast.style.pointerEvents = 'auto';
-        toast.style.background = type === 'error' ? '#c0392b' : type === 'success' ? '#27ae60' : 'var(--border-color)';
-        toast.style.color = '#fff';
-        toast.style.padding = '12px 24px';
-        toast.style.borderRadius = '8px';
-        toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-        toast.style.fontSize = '14px';
-        toast.style.fontWeight = 'bold';
-        toast.style.marginBottom = '10px';
-        toast.style.textAlign = 'center';
-        toast.style.animation = 'fadeIn 0.3s forwards, fadeOut 0.3s 2.7s forwards';
-        toast.innerText = msg;
-        container.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
-    }
-
-    function showCustomConfirm(title, message, callback) {
-        document.getElementById('modal-title').innerText = title;
-        document.getElementById('modal-item-name').innerText = message;
-        document.getElementById('modal-input-area').innerHTML = '';
-        document.getElementById('modal-confirm').onclick = () => { callback(); closeModal(); };
-        document.getElementById('custom-modal').style.display = 'block';
-        document.getElementById('modal-overlay').style.display = 'block';
-    }
-
-    function closeModal() {
-        document.getElementById('custom-modal').style.display = 'none';
-        document.getElementById('modal-overlay').style.display = 'none';
-    }
 
     window.onload = () => {
         const hash = new URLSearchParams(window.location.hash.slice(1));
@@ -647,7 +609,6 @@
         window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
     }
 
-    // --- 前台渲染與商品選擇核心 ---
     function refreshUI() {
         const pC = document.getElementById('pCat'), aC = document.getElementById('aCatSelect'), aLC = document.getElementById('admin-list-container');
         pC.innerHTML = '<option value="">請選擇...</option>'; aC.innerHTML = '<option value="">請選擇...</option>'; aLC.innerHTML = '';
@@ -674,9 +635,10 @@
             
             itemsArray.forEach(it => {
                 let pL = (it.type==='single') ? `$${(Number(it.price)||0).toLocaleString()}` : (it.type==='retail') ? `$${(Number(it.price)||0).toLocaleString()} (上限${it.max||'無'})` : (it.type==='range') ? `$${(Number(it.min)||0).toLocaleString()}~$${(Number(it.max)||0).toLocaleString()}` : '自填10%';
+                let dailyLimitInfo = (it.dailyLimit && Number(it.dailyLimit) > 0) ? ` <span style="color:#e74c3c;font-size:11px;">(每日限購: ${it.dailyLimit})</span>` : '';
                 itemListDiv.innerHTML += `
                     <div class="item-row" data-id="${it.id}">
-                        <div class="item-info"><span class="drag-handle">☰</span><b style="color:var(--text);">${it.name}</b>&nbsp;<span style="color:#888">(${pL})</span></div>
+                        <div class="item-info"><span class="drag-handle">☰</span><b style="color:var(--text);">${it.name}</b>${dailyLimitInfo}&nbsp;<span style="color:#888">(${pL})</span></div>
                         <div class="admin-btns">
                             <button class="edit-btn" onclick="openEditModal('${catId}','${it.id}')">編輯</button>
                             <button class="del-btn" onclick="deleteItem('${catId}','${it.id}')">下架</button>
@@ -716,7 +678,14 @@
             } else if (it.type === 'custom') {
                 extraUi = `<div class="custom-price-input" id="custom-box-${it.id}"><label style="margin-top:0; color:#ff9900;">請輸入您的車輛/財產官方購入總價值：</label><input type="number" id="custom-val-${it.id}" placeholder="請輸入金額" oninput="calcTotalCost()" style="margin-bottom:0;"></div>`;
             }
-            container.innerHTML += `<div class="item-option"><label class="item-main" for="chk-${it.id}"><input type="checkbox" id="chk-${it.id}" value="${it.id}" onchange="toggleItemExtra('${it.id}', '${it.type}')"><span style="color:var(--text);">${it.name}</span><span class="price-tag">${pl}</span></label>${extraUi}</div>`;
+
+            // 🚗 新增：若設有每日限購，動態渲染醒目Badge
+            let limitBadge = '';
+            if (it.dailyLimit && Number(it.dailyLimit) > 0) {
+                limitBadge = `<span class="ml-2 px-2 py-0.5 rounded text-[10px] font-bold" style="background: rgba(231,76,60,0.15); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3);">每日限購 ${it.dailyLimit} 份</span>`;
+            }
+
+            container.innerHTML += `<div class="item-option"><label class="item-main" for="chk-${it.id}"><input type="checkbox" id="chk-${it.id}" value="${it.id}" onchange="toggleItemExtra('${it.id}', '${it.type}')"><span style="color:var(--text);">${it.name} ${limitBadge}</span><span class="price-tag">${pl}</span></label>${extraUi}</div>`;
         });
         document.getElementById('calc-section').style.display = 'block';
         calcTotalCost();
@@ -824,14 +793,59 @@
         let catId = document.getElementById('pCat').value; if (!catId) { showToast("請選擇業務類別", "error"); return; }
         let cat = storeData[catId], selectedItems = [], computedPrice = 0;
         
+        let todayStartMs = getTodayStartTimestamp();
+
+        // 🚗 核心限購攔截與檢查邏輯 🚗
         for (let itId in cat.items) {
             let it = cat.items[itId], chk = document.getElementById(`chk-${itId}`);
             if (chk && chk.checked) {
-                let itemSummary = { id: itId, name: it.name, type: it.type };
+                // 1. 取得限購值
+                let limit = Number(it.dailyLimit) || 0;
+                let buyingNow = 1;
+                if (it.type === 'retail') {
+                    buyingNow = parseInt(document.getElementById(`qty-${itId}`).value) || 1;
+                }
+
+                if (limit > 0) {
+                    // 2. 統計今日已購數量 (同Discord帳號、今天00:00後、狀態非取消)
+                    let boughtToday = 0;
+                    Object.values(ordersData || {}).forEach(order => {
+                        if (order.customerId === userData.id && 
+                            order.timestamp >= todayStartMs && 
+                            order.status !== 'cancelled' && 
+                            order.status !== 'rejected') {
+                            
+                            if (order.items && Array.isArray(order.items)) {
+                                order.items.forEach(boughtItem => {
+                                    if (boughtItem.id === itId) {
+                                        boughtToday += (Number(boughtItem.qty) || 1);
+                                    }
+                                });
+                            }
+                        }
+                    });
+
+                    // 3. 條件判定：是否超限
+                    let remain = limit - boughtToday;
+                    if (remain <= 0) {
+                        showToast(`⛔ 訂購失敗！\n【${it.name}】每日限購 ${limit} 份。\n您今日的額度已用完，請於明日 00:00 後再次購買！`, "error");
+                        document.getElementById('submit-btn').disabled = false;
+                        document.getElementById('submit-btn').innerText = '送出預定';
+                        return;
+                    }
+
+                    if (buyingNow > remain) {
+                        showToast(`⛔ 訂購失敗！\n【${it.name}】每日限購 ${limit} 份 (今日已購 ${boughtToday} 份)。\n您今日僅剩餘 ${remain} 份購買額度，請降低訂購數量！`, "error");
+                        document.getElementById('submit-btn').disabled = false;
+                        document.getElementById('submit-btn').innerText = '送出預定';
+                        return;
+                    }
+                }
+
+                let itemSummary = { id: itId, name: it.name, type: it.type, dailyLimit: limit };
                 if (it.type === 'single') { itemSummary.calcPrice = Number(it.price)||0; computedPrice += itemSummary.calcPrice; }
                 else if (it.type === 'retail') {
-                    let q = parseInt(document.getElementById(`qty-${itId}`).value) || 1;
-                    itemSummary.qty = q; itemSummary.calcPrice = (Number(it.price)||0) * q; computedPrice += itemSummary.calcPrice;
+                    itemSummary.qty = buyingNow; itemSummary.calcPrice = (Number(it.price)||0) * buyingNow; computedPrice += itemSummary.calcPrice;
                 } else if (it.type === 'range') { 
                     itemSummary.calcPrice = Number(it.min)||0; itemSummary.rangeMax = Number(it.max)||0; computedPrice += itemSummary.calcPrice; 
                 } else if (it.type === 'custom') {
@@ -841,6 +855,7 @@
                 selectedItems.push(itemSummary);
             }
         }
+        
         if (selectedItems.length === 0) { showToast("請至少勾選一項服務項目", "error"); return; }
         
         document.getElementById('submit-btn').disabled = true;
@@ -857,7 +872,6 @@
                 return `${i.name}  (${valStr})`;
             });
 
-            // 加入車牌資訊
             let pPlate = document.getElementById('pPlate').value.trim() || '未填寫';
             let pCarModel = document.getElementById('pCarModel').value.trim() || '未填寫';
             let pRemarks = document.getElementById('pRemarks').value.trim() || '無';
@@ -940,12 +954,11 @@
             document.getElementById('login-view').style.display='none'; 
             document.getElementById('emp-login-view').style.display='block';
         }
-    
     }
     
     function authAdmin() {
         let u = document.getElementById('aUser').value, p = document.getElementById('aPass').value;
-        if (u === 'pomelo' && p === '960326') { 
+        if (u === 'pomelo' && p === '0326') { 
             currentLoggedUserType = 'boss'; currentEmpId = 'boss'; 
             showToast("👑 老闆登入成功", "success"); 
             refreshAllCalculations(); 
@@ -964,7 +977,6 @@
                 currentLoggedUserType = 'emp';
                 currentEmpId = id;
                 
-                // 🛑 v7.2 防呆登入：強制設定為下班狀態
                 if (empData[id].onDuty) {
                     db.ref(`employees/${id}/onDuty`).set(false);
                     empData[id].onDuty = false;
@@ -998,7 +1010,6 @@
         if (page === 'roles') loadRolePerms(); 
     }
 
-    // --- 防呆：員工安全登出系統 ---
     function handleLogout() {
         if (currentLoggedUserType === 'emp' && currentEmpId) {
             let e = empData[currentEmpId];
@@ -1019,7 +1030,7 @@
                 db.ref().update(updates).then(() => {
                     location.reload();
                 });
-                return; // 等待寫入完成
+                return; 
             }
         }
         location.reload();
@@ -1161,7 +1172,9 @@
     function addItem() {
         let catId = document.getElementById('aCatSelect').value; if (!catId) { alert("請選擇分類"); return; }
         let name = document.getElementById('nItemName').value.trim(); if (!name) return;
-        let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999 };
+        let limitVal = Number(document.getElementById('nItemDailyLimit').value) || 0;
+        
+        let itemData = { id: 'ITM-' + Date.now(), name: name, type: currentMode, order: 999, dailyLimit: limitVal };
         
         if (currentMode === 'single' || currentMode === 'retail') {
             let p = Number(document.getElementById('nItemPrice').value) || 0; itemData.price = p;
@@ -1173,6 +1186,7 @@
             showToast("商品上架成功", "success"); document.getElementById('nItemName').value = '';
             document.getElementById('nItemPrice').value = ''; document.getElementById('nItemMax').value = '';
             document.getElementById('nPriceMin').value = ''; document.getElementById('nPriceMax').value = '';
+            document.getElementById('nItemDailyLimit').value = '';
         });
     }
 
@@ -1181,17 +1195,44 @@
     function openEditModal(cid, iid) {
         let i = storeData[cid].items[iid], a = document.getElementById('modal-input-area');
         document.getElementById('modal-title').innerText = "編輯項目";
+        let dlVal = i.dailyLimit || 0;
         if (i.type === 'retail') {
-            a.innerHTML = `單價 <input type="number" id="ep" value="${i.price}"> 上限 <input type="number" id="em" value="${i.max || ''}">`;
-            document.getElementById('modal-confirm').onclick = () => { db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ price: Number(document.getElementById('ep').value), max: document.getElementById('em').value ? Number(document.getElementById('em').value) : '' }); closeModal(); };
+            a.innerHTML = `單價 <input type="number" id="ep" value="${i.price}"><br>上限 <input type="number" id="em" value="${i.max || ''}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+            document.getElementById('modal-confirm').onclick = () => { 
+                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
+                    price: Number(document.getElementById('ep').value), 
+                    max: document.getElementById('em').value ? Number(document.getElementById('em').value) : '',
+                    dailyLimit: Number(document.getElementById('edl').value) || 0
+                }); 
+                closeModal(); 
+            };
         } else if (i.type === 'single') {
-            a.innerHTML = `售價 <input type="number" id="ep" value="${i.price}">`;
-            document.getElementById('modal-confirm').onclick = () => { db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ price: Number(document.getElementById('ep').value) }); closeModal(); };
+            a.innerHTML = `售價 <input type="number" id="ep" value="${i.price}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+            document.getElementById('modal-confirm').onclick = () => { 
+                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
+                    price: Number(document.getElementById('ep').value),
+                    dailyLimit: Number(document.getElementById('edl').value) || 0
+                }); 
+                closeModal(); 
+            };
         } else if (i.type === 'range') {
-            a.innerHTML = `最低 <input type="number" id="emi" value="${i.min}"> 最高 <input type="number" id="ema" value="${i.max}">`;
-            document.getElementById('modal-confirm').onclick = () => { db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ min: Number(document.getElementById('emi').value), max: Number(document.getElementById('ema').value) }); closeModal(); };
+            a.innerHTML = `最低 <input type="number" id="emi" value="${i.min}"><br>最高 <input type="number" id="ema" value="${i.max}"><br>每日限購 <input type="number" id="edl" value="${dlVal}">`;
+            document.getElementById('modal-confirm').onclick = () => { 
+                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({ 
+                    min: Number(document.getElementById('emi').value), 
+                    max: Number(document.getElementById('ema').value),
+                    dailyLimit: Number(document.getElementById('edl').value) || 0
+                }); 
+                closeModal(); 
+            };
         } else {
-            a.innerHTML = "此項目無特定設定可調，如需更改類型請刪除重設。"; document.getElementById('modal-confirm').onclick = () => { closeModal(); };
+            a.innerHTML = `每日限購 <input type="number" id="edl" value="${dlVal}">`;
+            document.getElementById('modal-confirm').onclick = () => { 
+                db.ref(`xiangyi_shop/${cid}/items/${iid}`).update({
+                    dailyLimit: Number(document.getElementById('edl').value) || 0
+                }); 
+                closeModal(); 
+            };
         }
         document.getElementById('custom-modal').style.display = 'block'; document.getElementById('modal-overlay').style.display = 'block';
     }
@@ -1278,7 +1319,6 @@
         });
     }
 
-    // 💥 系統全方位運算與渲染大核心 💥
     function refreshAllCalculations() {
         let weekStart = getWeekStartTimestamp();
         let weekId = getWeekIdStr(weekStart); 
@@ -1653,11 +1693,9 @@
 
         showCustomConfirm("刪減此服務細項？", "確定要移除？金額與分成將連動重算。", async () => {
             let subtractedPrice = 0;
-            // 優先從結構化的 items 陣列中抓取精確金額，避免字串解析錯誤
             if (o.items && o.items[itemIndex] && typeof o.items[itemIndex].calcPrice !== 'undefined') {
                 subtractedPrice = Number(o.items[itemIndex].calcPrice) || 0;
             } else {
-                // 備用方案：從字串中萃取 (修復千分位逗號導致只扣部分金額的問題)
                 let itemStr = o.details[itemIndex];
                 let priceMatch = itemStr.match(/\$([\d,]+)/);
                 if (priceMatch && priceMatch[1]) { 
@@ -1690,22 +1728,19 @@
 
             let updates = {};
             updates[`orders/${orderId}/details`] = newDetails;
-            if (o.items) updates[`orders/${orderId}/items`] = newItems; // 同步更新 items 陣列
+            if (o.items) updates[`orders/${orderId}/items`] = newItems; 
             updates[`orders/${orderId}/totalPrice`] = newPrice;
             updates[`orders/${orderId}/price`] = newPrice;
             updates[`orders/${orderId}/commission`] = newCommission;
 
-            // 修復：已完工訂單刪減細項時，同步正確扣除公款
             if (o.status === 'completed') {
                 let currentBalance = Number(fundsData.balance || 0);
                 let fundDeduction = 0;
                 if (o.isPaid) {
-                    // 已結算薪資：老闆當初只拿了利潤(總額-分成)，退款也是退差額的利潤
                     let oldNet = oldPrice - oldCommission;
                     let newNet = newPrice - newCommission;
                     fundDeduction = oldNet - newNet;
                 } else {
-                    // 未結算薪資：全額都在公款庫中，直接扣除減少的總價
                     fundDeduction = subtractedPrice;
                 }
                 updates[`funds/balance`] = currentBalance - fundDeduction;
